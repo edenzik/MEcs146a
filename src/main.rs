@@ -26,11 +26,10 @@ impl <'a>Shell<'a> {
 
     fn run(&self) {
         let mut stdin = BufferedReader::new(stdin());
-
+        let mut history: Vec<String> = Vec::new();
         loop {
             old_io::stdio::print(self.cmd_prompt.as_slice());
             old_io::stdio::flush();
-            let mut history: Vec<String> = Vec::new();
             let line = stdin.read_line().unwrap();
             let cmd_line = line.trim();
             let program = cmd_line.splitn(1, ' ').nth(0).expect("no program");
