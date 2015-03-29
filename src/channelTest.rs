@@ -31,12 +31,17 @@ fn main() {
 
         thread::spawn(move || {
 
+            // Thread either gets message from the pipe, or if this thread
+            // is the first (no input channel), it sends a token down instead.
             let prev_msg = match thread_rx {
                 Some(sender)    => sender.recv().ok()
                                     .expect("Could not read from channel").as_slice(),
                 None            => "**",
             };
 
+            // Thread takes the message from the previous match and sends it
+            // into its pipe with the thread's id as well. If the thread is
+            // last in line (no output channel), it prints the whole chain instead.
             match thread_tx {
                 Some(receiver)  => {receiver.send(
                     format!("Thread {} {}", id, prev_msg));}
