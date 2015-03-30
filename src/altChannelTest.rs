@@ -9,13 +9,14 @@ fn main() {
     let the_channel = channel();
     let (tx, rx) = the_channel;
     let (tx1, rx1) = channel();
+    let tx_s = Some(tx);
 
         println!("I am main, hear me roar!");
 
         let thread1 = thread::scoped(move || {
             println!("commencing thread run 1");
 
-            let thread_tx = tx;
+            let thread_tx = tx_s.unwrap();
             let msg = "abba";
 
             println!("I am thread {} and I am sending message {}", 1, msg);
