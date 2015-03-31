@@ -1,62 +1,52 @@
-use std::sync::mpsc::{Sender, Receiver, channel};
-use std::sync::mpsc;
+use std::sync::mpsc::{channel};
 use std::thread;
 
-static NUMTHREADS :usize = 3;
+static NUMTHREADS :usize = 10;
 
-struct BufferStruct<'a> {
-    some_text: &'a str,
-    length: usize
-}
-
-fn main<'a>() {
+fn main() {
 
     // Maybe consider a Vec of channels instead?
     // Initialize them all at once and pass in only the required
     // references to threads as they are spawned.
 
-    let mut channels = Vec::new();
-
+    let mut rx_stack= Vec::new();
+    let mut tx_stack = Vec::new();
+    let mut join_guards = Vec::new();
+    
     // Initialize a Vec full of channels
+    tx_stack.push(None);
     for _ in 0..(NUMTHREADS - 1) {
-        channels.push(channel::<BufferStruct>());
+        let (tx, rx) = channel::<String>();
+        rx_stack.push(Some(rx));
+        tx_stack.push(Some(tx));
     }
-
+    rx_stack.push(None);
+    
     // Initialize each thread, connect together with channels
     for id in 0..NUMTHREADS {
-
-        let thread_rx = match id {
-            0               => None,
-            n               => Some(&channels[n-1].1),
-        };
-        let thread_tx = match id {
-            x if x == NUMTHREADS-1  => None,
-            _                       => Some(&channels[id].0),
-        };
-
-        thread::scoped(move || {
+        let thread_rx = rx_stack.pop().unwrap();
+        let thread_tx = tx_stack.pop().unwrap();
+        
+        join_guards.push(thread::scoped(move || {
 
             // Thread either gets message from the pipe, or if this thread
             // is the first (no input channel), it sends a token down instead.
             let prev_msg = match thread_rx {
-                Some(sender)    => sender.recv().ok()
-                                    .expect("Could not read from channel"),
-                None            => BufferStruct{ some_text: "", length: 0 },
+                Some(reciever)    => reciever.recv().ok().expect("Could not read from channel"),
+                None            => format!("Thread {}", id), 
             };
-
+            println!("Thread {} carrying {}", id, prev_msg);
             // Thread takes the message from the previous match and sends it
             // into its pipe with the thread's id as well. If the thread is
             // last in line (no output channel), it prints the whole chain instead.
             match thread_tx {
-                Some(receiver)  => {receiver.send(BufferStruct{
-                        some_text: format!("Thread {} {}", id, prev_msg.some_text)
-                        .as_slice(),
-                        length: (prev_msg.length + 9)});}
-                None            => {println!("{} \n all done!", prev_msg.some_text);}
+                Some(sender)  => {sender.send(format!("Thread {}", id)).ok().expect("Send failed");},
+                None        => {println!("all done {}", prev_msg);}
             };
 
-        });
+        }));
 
     }
 
 }
+
