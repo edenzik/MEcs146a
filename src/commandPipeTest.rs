@@ -6,20 +6,21 @@ extern crate getopts;
 use std::process;
 // use std::old_io::stdin;
 // use std::{old_io, os};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::str;
+use std::thread;
 
 struct StdOutIter {
     out: process::ChildStdout,
 }
 
-static test_string: &' static str = "This is \n a test \n string, yo.\n";
+static TEST_STRING: &'static str = "This is \n a test \n string, yo.\n";
 
 impl<'a> Iterator for StdOutIter {
     type Item = String;
 
     fn next(& mut self) -> Option<String> {
-        let mut buffer_array : [u8; 50] = [0; 80];
+        let mut buffer_array : [u8; 80] = [0; 80];
         let buffer = &mut buffer_array;
         
         let output_str = match self.out.read(buffer) {
@@ -44,10 +45,15 @@ fn main() {
         .stderr(process::Stdio::capture()).spawn().unwrap();
 
     let /*mut*/ stdout = cmd.stdout.unwrap();
+    let stdin = cmd.stdin.unwrap();
 
     let stdin_thread = move || {
-        let stdin = cmd.stdin.unwrap();
+        let mut thread_stdin = stdin;
+
+        thread_stdin.write_all(TEST_STRING.as_bytes()).unwrap();
     };
+
+    thread::spawn(stdin_thread);
 
     let process_reader = StdOutIter{ out : stdout };
 
