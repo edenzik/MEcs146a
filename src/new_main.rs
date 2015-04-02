@@ -14,6 +14,7 @@ use std::process::{Command, Stdio};
 use std::old_io::stdin;
 use std::{old_io, os};
 use std::str;
+use std::sync::mpsc;
 
 struct Shell<'a> {
     cmd_prompt: &'a str,
@@ -27,35 +28,57 @@ impl <'a>Shell<'a> {
     fn run(&self) {
         let mut stdin = BufferedReader::new(stdin());
         let mut history: Vec<String> = Vec::new();
+
+        // Top level of REPL loop
         loop {
+            // Vars for this command string
+            let thread_stack = Vec::new();  // Holds JoinHandles for spawned threads
+
+            // Flush stdio and read a new command string
             old_io::stdio::print(self.cmd_prompt.as_slice());
             old_io::stdio::flush();
             let line = stdin.read_line().unwrap();
             
             // PARSE CODE GOES HERE
+            let cmd_struct = PARSE PARSE PARSE
 
             // Used later to drop or keep join handles
-            let mut background? = false;
+            let background? = cmd_struct.background;
 
-            // Placeholder for result from parsing
-            let placeholder = Vec::new();
-            let placeholder_iter = placeholder.iter();
+            // For sizing channel Vecs
+            let num_threads = cmd_struct.thread_count;
 
-            let thread_stack = Vec::new();
+            // Initialize and populate channel Vecs
             let sender_stack = Vec::new();
             let receiver_stack = Vec::new();
+            sender_stack.push(None);
+            for _ in 0..(num_threads - 1) {
+                let (tx, rx) = channel::<String>();
+                receiver_stack.push(Some(rx));
+                sender_stack.push(Some(tx));
+            }
+            receiver_stack.push(None);
 
-            // Prime sender/receiver stacks with channels
-
+            // Ready to start spawning threads
 
             // Iterate through the parsed structs and spawn a super thread for each
             for cmd_struct in placeholder_iter {
 
                 // Decide which type of thread to spawn
-
-
-                // Spawn master thread, pass in channel handles
+                // Spawn master thread, returns join handle, pass in channel handles
                     // Spawn command (if appropriate)
+                    match program {
+                        ""      =>  { continue; }
+                        "exit"  =>  { return; }
+                        "history" => {println!("{:?}",history);}
+                        "cd"    => {
+                             match cmd_line.splitn(1, ' ').nth(1) {
+                                None => {os::change_dir(&os::homedir().unwrap());}
+                                Some(path) => {os::change_dir(&Path::new(path));}
+                             }; 
+                         }
+                        _       =>  { self.run_cmdline(cmd_line); }
+                    }
 
                     // Spawn helper threads
 
@@ -67,55 +90,45 @@ impl <'a>Shell<'a> {
             }
 
             //Completed with all threads, if flag set drop handles, else join
+            if !background? {for thread in thread_stack.iter() { thread.join(); } }
 
             
-            match program {
-                ""      =>  { continue; }
-                "exit"  =>  { return; }
-                "history" => {println!("{:?}",history);}
-                "cd"    => {
-                     match cmd_line.splitn(1, ' ').nth(1) {
-                        None => {os::change_dir(&os::homedir().unwrap());}
-                        Some(path) => {os::change_dir(&Path::new(path));}
-                     }; 
-                 }
-                _       =>  { self.run_cmdline(cmd_line); }
-            }
             history.push(String::from_str(cmd_line));
         }
     }
 
-    fn run_cmdline(&self, cmd_line: &str) {
-        let argv: Vec<&str> = cmd_line.split(' ').filter_map(|x| {
-            if x == "" {
-                None
-            } else {
-                Some(x)
-            }
-        }).collect();
-
-        match argv.first() {
-            Some(&program) => self.run_cmd(program, argv.tail()),
-            None => (),
-        };
-    }
-
-    fn run_cmd(&self, program: &str, argv: &[&str]) {
+    // Runs command with args
+    // Validates by calling cmd_exists() first
+    // Returns handle to the Command after spawning it
+    fn run_cmd(&self, program: &str, args: &[&str]) -> Result<Child>{
         if self.cmd_exists(program) {
-            let output = Command::new(program).args(argv).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
-            let stderr=String::from_utf8_lossy(&output.stderr);
-            let stdout=String::from_utf8_lossy(&output.stdout);
-            if !"".eq(stdout.as_slice()) {
-                print!("{}", stdout);
-            }
-            if !"".eq(stderr.as_slice()) {
-                print!("{}", stderr);
-            }
+        Command::new(program).args(args)
+                .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
+                .stderr(process::Stdio::capture()).spawn()
         } else {
-            println!("{}: command not found", program);
+            Err("Command not found")
         }
     }
 
+
+    // REMOVING THIS BECAUSE IT HANDLES BEHAVIOR HANDLED ELSEWHERE
+    // fn run_cmd(&self, program: &str, argv: &[&str]) {
+    //     if self.cmd_exists(program) {
+    //         let output = Command::new(program).args(argv).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
+    //         let stderr=String::from_utf8_lossy(&output.stderr);
+    //         let stdout=String::from_utf8_lossy(&output.stdout);
+    //         if !"".eq(stdout.as_slice()) {
+    //             print!("{}", stdout);
+    //         }
+    //         if !"".eq(stderr.as_slice()) {
+    //             print!("{}", stderr);
+    //         }
+    //     } else {
+    //         println!("{}: command not found", program);
+    //     }
+    // }
+
+    // Uses a 'which' command on underlying system to validate command before execution
     fn cmd_exists(&self, cmd_path: &str) -> bool {
         Command::new("which").arg(cmd_path).stdout(Stdio::capture()).status().unwrap().success()
     }
