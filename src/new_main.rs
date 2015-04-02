@@ -34,19 +34,41 @@ impl <'a>Shell<'a> {
             
             // PARSE CODE GOES HERE
 
+            // Used later to drop or keep join handles
+            let mut background? = false;
+
             // Placeholder for result from parsing
             let placeholder = Vec::new();
             let placeholder_iter = placeholder.iter();
 
             let thread_stack = Vec::new();
+            let sender_stack = Vec::new();
+            let receiver_stack = Vec::new();
 
+            // Prime sender/receiver stacks with channels
+
+
+            // Iterate through the parsed structs and spawn a super thread for each
             for cmd_struct in placeholder_iter {
 
-                
+                // Decide which type of thread to spawn
 
 
+                // Spawn master thread, pass in channel handles
+                    // Spawn command (if appropriate)
+
+                    // Spawn helper threads
+
+                    // Terminate when eof read on stdout
+
+
+                // Completed with this thread, iterate to next one
 
             }
+
+            //Completed with all threads, if flag set drop handles, else join
+
+            
             match program {
                 ""      =>  { continue; }
                 "exit"  =>  { return; }
