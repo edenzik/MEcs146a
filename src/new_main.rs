@@ -40,12 +40,15 @@ impl <'a>Shell<'a> {
             let line = stdin.read_line().unwrap();
             
             // PARSE CODE GOES HERE
+            // TODO: Add Parse code
             let cmd_struct = PARSE PARSE PARSE
 
             // Used later to drop or keep join handles
+            // TODO: Match this to parse structure
             let background? = cmd_struct.background;
 
             // For sizing channel Vecs
+            // TODO: Get this from parse structure
             let num_threads = cmd_struct.thread_count;
 
             // Initialize and populate channel Vecs
@@ -80,35 +83,57 @@ impl <'a>Shell<'a> {
 
                 // Decide which type of thread to spawn (history is special case)
                 match program {
-                    "history" => { spawn_history_thread(); }
+                    "history" => { // TODO: Put History Thread here, feed pipe or print }
                     _ => { // Spawn master thread, returns join handle, 
-                               // pass in channel handles
+
                         // Spawn command
                         let process_handle = Some( self.run_cmd(cmd_struct) )
 
                         // Spawn helper threads
                         let in_helper = match rx {
                             Some(receiver) => {// Spawn a thread to handle in pipe
-                                thread::scoped(get_input_helper_thread())
-                            }/
+                                let stdin = process_handle.stdin;
+                                thread::scoped(move || {
+                                    // Feed process from input channel until channel closes
+                                    loop {
+                                        let write_result = match receiver.recv() {
+                                            Ok(msg) => stdin.write_all(msg.as_bytes());
+                                            Err(_) => { break }
+                                        }
+                                        match write_result {
+                                            Ok(_) => { continue; }
+                                            Err(_) => { println!("Error: Failed writing to channel"); break; }
+                                        }
+                                    }
+                                })
+                            }
                             None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
                         }
                         let out_helper = match tx {
-                            Some(sender) => {// Spawn a thread to handle out pipe
-                                thread::scoped(get_output_helper_thread())
+                            Some(sender) => {// Spawn a thread to pass on out pipe
+                                let stdout = process_handle.stdout;
+                                thread::scoped(move || {
+                                    let process_reader = StdOutIter{ out : stdout };
+
+                                    for output in process_reader {
+                                        sender.send(output)
+                                    }
+                                })
                             }
-                            None => { /* TODO */ } // Spawn a thread to print out pipe
+                            None => { // Spawn a thread to print from out pipe
+                                let stdout = process_handle.stdout;
+                                thread::scoped(move || {
+                                    let process_reader = StdOutIter{ out : stdout };
+
+                                    for output in process_reader {
+                                        print!("{}", output);
+                                    }
+                                })
+
+                            }
                         }
 
-                        // Terminate when input done and eof read on stdout
-                        match in_helper {
-                            Some(handle) => { handle.join(); }
-                            None => {}
-                        }
-                        match out_helper {
-                            Some(handle) => { handle.join(); }
-                            None => {}
-                        }
+                        // Helper thread handles drop, joining on them.
 
                     }  // End of non-history program handling
                     
@@ -151,6 +176,34 @@ fn get_cmdline_from_args() -> Option<String> {
     ];
 
     getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
+}
+
+// Struct to encapsulate iteration over stdout from a spawned process
+// Calling next reads the next buffer length, chops it to size,
+// or returns None when the pipe is done.
+const BUFFER_SIZE :usize = 80;
+struct StdOutIter {
+    out: process::ChildStdout,
+}
+impl<'a> Iterator for StdOutIter {
+    type Item = String;
+
+    fn next(& mut self) -> Option<String> {
+        let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        let buffer = &mut buffer_array;
+        
+        let output_str = match self.out.read(buffer) {
+            Ok(length) => if length == 0 { return None }
+                            else { str::from_utf8(&buffer[0..length]) },
+            Err(_)   => { return None },
+        };
+
+        match output_str {
+            Ok(string) => Some(string.to_string()),
+            Err(_) => panic!("failed to convert stdin to String"),
+        }
+
+    }
 }
 
 fn main() {
