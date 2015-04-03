@@ -59,34 +59,60 @@ impl <'a>Shell<'a> {
             }
             receiver_stack.push(None);
 
-            // Ready to start spawning threads
+            // Ready to start spawning threads, check for special cases
+            match program {
+                ""      =>  { continue; }
+                "exit"  =>  { return; }
+                "cd"    => {    // TODO: GET ARGS FOR CD
+                    match cmd_line.splitn(1, ' ').nth(1) { 
+                        None => {os::change_dir(&os::homedir().unwrap());}
+                        Some(path) => {os::change_dir(&Path::new(path)); continue;}
+                    }
+                }
+                _       =>  {}  // Do nothing. All other branches end the loop.
+            };
 
             // Iterate through the parsed structs and spawn a super thread for each
             for cmd_struct in placeholder_iter {
+                // Pop local references to channels
+                let rx = receiver_stack.pop().unwrap();
+                let tx = sender_stack.pop().unwrap();
 
-                // Decide which type of thread to spawn
-                // Spawn master thread, returns join handle, pass in channel handles
-                    // Spawn command (if appropriate)
-                    match program {
-                        ""      =>  { continue; }
-                        "exit"  =>  { return; }
-                        "history" => {println!("{:?}",history);}
-                        "cd"    => {
-                             match cmd_line.splitn(1, ' ').nth(1) {
-                                None => {os::change_dir(&os::homedir().unwrap());}
-                                Some(path) => {os::change_dir(&Path::new(path));}
-                             }; 
-                         }
-                        _       =>  { self.run_cmdline(cmd_line); }
-                    }
+                // Decide which type of thread to spawn (history is special case)
+                match program {
+                    "history" => { spawn_history_thread(); }
+                    _ => { // Spawn master thread, returns join handle, 
+                               // pass in channel handles
+                        // Spawn command
+                        let process_handle = Some( self.run_cmd(cmd_struct) )
 
-                    // Spawn helper threads
+                        // Spawn helper threads
+                        let in_helper = match rx {
+                            Some(receiver) => {// Spawn a thread to handle in pipe
+                                thread::scoped(get_input_helper_thread())
+                            }/
+                            None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
+                        }
+                        let out_helper = match tx {
+                            Some(sender) => {// Spawn a thread to handle out pipe
+                                thread::scoped(get_output_helper_thread())
+                            }
+                            None => { /* TODO */ } // Spawn a thread to print out pipe
+                        }
 
-                    // Terminate when eof read on stdout
+                        // Terminate when input done and eof read on stdout
+                        match in_helper {
+                            Some(handle) => { handle.join(); }
+                            None => {}
+                        }
+                        match out_helper {
+                            Some(handle) => { handle.join(); }
+                            None => {}
+                        }
 
-
+                    }  // End of non-history program handling
+                    
                 // Completed with this thread, iterate to next one
-
             }
 
             //Completed with all threads, if flag set drop handles, else join
@@ -109,24 +135,6 @@ impl <'a>Shell<'a> {
             Err("Command not found")
         }
     }
-
-
-    // REMOVING THIS BECAUSE IT HANDLES BEHAVIOR HANDLED ELSEWHERE
-    // fn run_cmd(&self, program: &str, argv: &[&str]) {
-    //     if self.cmd_exists(program) {
-    //         let output = Command::new(program).args(argv).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
-    //         let stderr=String::from_utf8_lossy(&output.stderr);
-    //         let stdout=String::from_utf8_lossy(&output.stdout);
-    //         if !"".eq(stdout.as_slice()) {
-    //             print!("{}", stdout);
-    //         }
-    //         if !"".eq(stderr.as_slice()) {
-    //             print!("{}", stderr);
-    //         }
-    //     } else {
-    //         println!("{}: command not found", program);
-    //     }
-    // }
 
     // Uses a 'which' command on underlying system to validate command before execution
     fn cmd_exists(&self, cmd_path: &str) -> bool {
