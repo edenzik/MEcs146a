@@ -1,17 +1,11 @@
-extern crate getopts;
 
 
 use std::thread;
-use getopts::{optopt, getopts};
-use std::old_io::BufferedReader;
-use std::old_io::stdin;
 use std::{old_io, os};
 use std::str;
 use std::sync::mpsc;
-use std::sync::mpsc::{channel};
-use std::error::Error;
 use std::process;
-
+use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
 /// here as a Vector to GashCommands
@@ -71,7 +65,7 @@ impl<'a> GashCommandLine<'a> {
         let receiver_stack = Vec::new();
         sender_stack.push(None);
         for _ in 0..(5 - 1) {
-            let (tx, rx) = channel::<String>();
+            let (tx, rx) = mpsc::channel::<String>();
             receiver_stack.push(Some(rx));
             sender_stack.push(Some(tx));
         }
@@ -125,7 +119,7 @@ enum GashCommand<'a> {
 /// A gash command implementation
 impl<'a> GashCommand<'a> {
     /// Constructor for GashCommand, takes in the wording of the command
-    fn new(full_command : & 'a str) -> GashCommand<'a> {
+    fn new(full_command : & 'a str, history : Vec<String>) -> GashCommand<'a> {
         // full_command includes possible redirection
         // Separates command into tokens on white space
         let mut full_command_words = full_command.words();
@@ -179,16 +173,7 @@ impl<'a> GashCommand<'a> {
         process::Command::new("which").arg(cmd_path).stdout(process::Stdio::capture()).status().unwrap().success()
     }
 
-    fn get_cmdline_from_args() -> Option<String> {
-        /* Begin processing program arguments and initiate the parameters. */
-        let args = os::args();
 
-        let opts = &[
-            getopts::optopt("c", "", "", "")
-            ];
-
-        getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
-    }
 
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
