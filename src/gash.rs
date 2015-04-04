@@ -63,16 +63,6 @@ impl<'a> GashCommandLine<'a> {
         }
     }
 
-    /* Example usage of run_batch:
-       let gash_cmd_line = GashCommandLine::new(input_line);
-       match gash_cmd_line {
-       Empty => { continue; }
-       Exit => { break; }
-       UnsupportedCommand(msg) => { println!("{}", msg); continue; }
-       _ => { gash_cmd_line.run_batch(); }
-       };
-
-*/
 
     fn run_batch(&self) {
 
@@ -125,8 +115,10 @@ enum GashCommand<'a> {
     InputRedirect(GashOperation<'a>, Box<& 'a str>),
     /// Output redirect - see input redirect.
     OutputRedirect(GashOperation<'a>, Box<& 'a str>),
-    /// A bad command, due to bad parsing.
-    BadCommand,
+    /// A command that doesn't exist
+    UnsupportedCommand,
+    //A command that is bad
+    BadCommand
 }
 
 
@@ -146,7 +138,7 @@ impl<'a> GashCommand<'a> {
 
                 "history" => GashCommand::History,
 
-                _   if !self.cmd_exists(operator) => GashCommand::UnsupportedCommand,
+                _   if !GashCommand::cmd_exists(operator) => GashCommand::UnsupportedCommand,
 
                 // Output redirect, splits further to get location of directory
                 _   if full_command.contains(">") => {
@@ -183,8 +175,8 @@ impl<'a> GashCommand<'a> {
         */
     }
 
-    fn cmd_exists(&self, cmd_path: &str) -> bool {
-        Command::new("which").arg(cmd_path).stdout(Stdio::capture()).status().unwrap().success()
+    fn cmd_exists(cmd_path: &str) -> bool {
+        process::Command::new("which").arg(cmd_path).stdout(process::Stdio::capture()).status().unwrap().success()
     }
 
     fn get_cmdline_from_args() -> Option<String> {
@@ -300,7 +292,7 @@ impl<'a> GashOperation<'a> {
     // Runs command with args
     // Returns handle to the Command after spawning it
     fn run_cmd(&self) -> Result<Child>{
-        Command::new(*self.operator).args(&*self.operands.as_slice())
+        process::Command::new(*self.operator).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
             .stderr(process::Stdio::capture()).spawn()
     }
