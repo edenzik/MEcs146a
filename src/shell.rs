@@ -1,15 +1,16 @@
-extern crate getopts;
+// extern crate getopts;
 
-use std::thread;
-use getopts::{optopt, getopts};
+// use std::thread;
+// use getopts::{optopt, getopts};
 use std::old_io::BufferedReader;
-use std::{old_io, os};
+use std::old_io;
+// use std::os;
 use std::str;
-use std::sync::mpsc;
-use std::sync::mpsc::{channel};
-use std::error::Error;
-use std::io::prelude::*;
-use std::process::{Command, Stdio};
+// use std::sync::mpsc;
+// use std::sync::mpsc::{channel};
+// use std::error::Error;
+// use std::io::prelude::*;
+// use std::process::{Command, Stdio};
 mod gash;
 
 struct Shell<'a> {
