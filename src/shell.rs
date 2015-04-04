@@ -52,7 +52,7 @@ impl <'a>Shell<'a> {
             };
 
             // Add this history to the record
-            history.push(String::from_str(cmd_line));
+            history.push(String::from_str(gash_command_line));
         }
     }
 }
