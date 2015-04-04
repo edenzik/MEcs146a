@@ -137,7 +137,7 @@ impl<'a> GashCommand<'a> {
 
             //Otherwise, this is just a normal command
             _   =>  return GashCommand::Normal(
-                GashOperation{ operator:Box::new(operator),operands:Box::new(tokens.collect()) } ),
+                GashOperation{ operator:Box::new(operator),operands:Box::new(full_command_words.collect()) } ),
         }
 
         //If match doesn't get executed, we still need to return a command. Hence - bad command.
@@ -213,7 +213,7 @@ impl <'a>Shell<'a> {
         for cmd in cmds { 
             match cmd {
                 GashCommand::Normal(op) => {
-                    let output = Command::new(*op.operator).args(&*op.operands.as_slice()).stdin().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
+                    let output = Command::new(*op.operator).args(&*op.operands.as_slice()).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
                     let stderr=String::from_utf8_lossy(&output.stderr);
                     let stdout=String::from_utf8_lossy(&output.stdout);
                     if !"".eq(stdout.as_slice()) {
