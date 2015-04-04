@@ -193,7 +193,7 @@ impl<'a> GashCommand<'a> {
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
-    fn run(&self, thread_tx : mpsc::Sender, thread_rx : mpsc::Receiver) -> thread::JoinHandle {
+    fn run(&self, thread_tx : mpsc::Sender<String>, thread_rx : mpsc::Receiver<String>) -> thread::JoinHandle {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
             GashCommand::Normal(gash_operation) => { thread::spawn( move || {
@@ -291,7 +291,7 @@ struct GashOperation<'a> {
 impl<'a> GashOperation<'a> {
     // Runs command with args
     // Returns handle to the Command after spawning it
-    fn run_cmd(&self) -> Result<process::Child>{
+    fn run_cmd(&self) -> Result<process::Child, Error>{
         process::Command::new(*self.operator).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
             .stderr(process::Stdio::capture()).spawn()
