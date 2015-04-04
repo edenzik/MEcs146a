@@ -10,9 +10,7 @@ use std::str;
 use std::sync::mpsc;
 use std::sync::mpsc::{channel};
 use std::error::Error;
-use std::io::prelude::*;
-use std::process::{Command, Stdio};
-
+use std::process;
 
 
 /// Gash command line is the main unit containing a line of commands. It is represented
@@ -82,7 +80,7 @@ impl<'a> GashCommandLine<'a> {
         let sender_stack = Vec::new();
         let receiver_stack = Vec::new();
         sender_stack.push(None);
-        for _ in 0..(num_threads - 1) {
+        for _ in 0..(5 - 1) {
             let (tx, rx) = channel::<String>();
             receiver_stack.push(Some(rx));
             sender_stack.push(Some(tx));
@@ -90,7 +88,7 @@ impl<'a> GashCommandLine<'a> {
         receiver_stack.push(None);
 
         match *self {
-            Background(command_vec) => {
+            GashCommandLine::Background(command_vec) => {
                 // Spawn each as an unscoped thread, let handles drop
                 for gash_command in command_vec.iter() {
                     // Get channel handles
@@ -99,7 +97,7 @@ impl<'a> GashCommandLine<'a> {
                     gash_command.run(tx, rx).spawn().unwrap();
                 }
             }
-            Foreground(command_vec) => {
+            GashCommandLine::Foreground(command_vec) => {
                 // Spawn each as a scoped thread. Drop handles.
                 let mut handles = Vec::new();
                 for gash_command in command_vec.iter() {
@@ -148,6 +146,8 @@ impl<'a> GashCommand<'a> {
 
                 "history" => GashCommand::History,
 
+                _   if !self.cmd_exists(operator) => GashCommand::UnsupportedCommand,
+
                 // Output redirect, splits further to get location of directory
                 _   if full_command.contains(">") => {
                     let mut command = full_command.split_str(">");
@@ -183,6 +183,21 @@ impl<'a> GashCommand<'a> {
         */
     }
 
+    fn cmd_exists(&self, cmd_path: &str) -> bool {
+        Command::new("which").arg(cmd_path).stdout(Stdio::capture()).status().unwrap().success()
+    }
+
+    fn get_cmdline_from_args() -> Option<String> {
+        /* Begin processing program arguments and initiate the parameters. */
+        let args = os::args();
+
+        let opts = &[
+            getopts::optopt("c", "", "", "")
+            ];
+
+        getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
+    }
+
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
@@ -195,7 +210,7 @@ impl<'a> GashCommand<'a> {
                 let process_handle = gash_operation.run_cmd();
 
                 // Spawn helper threads
-                let in_helper = match rx {
+                let in_helper = match thread_rx {
                     Some(receiver) => {// Spawn a thread to handle in pipe
                         let stdin = process_handle.stdin;
                         thread::scoped(move || {
@@ -214,7 +229,7 @@ impl<'a> GashCommand<'a> {
                     }
                     None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
                 };
-                let out_helper = match tx {
+                let out_helper = match thread_tx {
                     Some(sender) => {// Spawn a thread to pass on out pipe
                         let stdout = process_handle.stdout;
                         thread::scoped(move || {
@@ -291,6 +306,32 @@ impl<'a> GashOperation<'a> {
     }
 }
 
+// Struct to encapsulate iteration over stdout from a spawned process
+// Calling next reads the next buffer length, chops it to size,
+// or returns None when the pipe is done.
+const BUFFER_SIZE :usize = 80;
+struct StdOutIter {
+    out: process::ChildStdout,
+}
+impl<'a> Iterator for StdOutIter {
+    type Item = String;
 
+    fn next(& mut self) -> Option<String> {
+        let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        let buffer = &mut buffer_array;
+        
+        let output_str = match self.out.read(buffer) {
+            Ok(length) => if length == 0 { return None }
+            else { str::from_utf8(&buffer[0..length]) },
+            Err(_)   => { return None },
+        };
+
+        match output_str {
+            Ok(string) => Some(string.to_string()),
+            Err(_) => panic!("failed to convert stdin to String"),
+        }
+
+    }
+}
 
 
