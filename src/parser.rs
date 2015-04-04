@@ -109,21 +109,21 @@ impl<'a> GashCommandLine<'a> {
 
         match *self {
             Background(command_vec) => {
-                // Get channel handles
-                let tx = sender_stack.pop().unwrap();
-                let rx = receiver_stack.pop().unwrap();
                 // Spawn each as an unscoped thread, let handles drop
                 for gash_command in command_vec.iter() {
+                    // Get channel handles
+                    let tx = sender_stack.pop().unwrap();
+                    let rx = receiver_stack.pop().unwrap();
                     gash_command.run(tx, rx).spawn().unwrap();
                 }
             }
             Foreground(command_vec) => {
-                // Get channel handles
-                let tx = sender_stack.pop().unwrap();
-                let rx = receiver_stack.pop().unwrap();
                 // Spawn each as a scoped thread. Drop handles.
                 let mut handles = Vec::new();
                 for gash_command in command_vec.iter() {
+                    // Get channel handles
+                    let tx = sender_stack.pop().unwrap();
+                    let rx = receiver_stack.pop().unwrap();
                     handles.push( gash_command.run(tx, rx).scoped().unwrap() );
                 }
             }
@@ -201,8 +201,30 @@ impl<'a> GashCommand<'a> {
         */
     }
 
-    fn run(thread_tx : mpsc::Sender, thread_rx : mpsc::Receiver) -> thread::Builder {
-        
+    /// running a GashCommand starts a thread and returns a JoinHandle to that thread
+    /// accepts Sender and Receiver channels (or None) for piping
+    /// matches on variant of GashCommand to determine thread's internal behavior
+    fn run(&self, thread_tx : mpsc::Sender, thread_rx : mpsc::Receiver) -> thread::JoinHandle {
+        match *self {
+            // Standard form, make process and helper threads to connect pipes and channels
+            GashCommand::Normal(gash_operation) => {}
+
+            // No process--use thread to read history
+            GashCommand::History => {}
+
+            // If tx and rx are None, change system directory. Else do nothing.
+            // This is the observed behavior from testing on Ubuntu 14.04
+            GashCommand::ChangeDirectory(Box<& 'a str>),
+
+            // Similar to Normal, but have input helper thread feed from file instead of channel
+            GashCommand::InputRedirect(gash_operation, Box<& 'a str>),
+
+            // Similar to Normal, but have output helper thread feed to file instead of channel
+            GashCommand::OutputRedirect(gash_operation, Box<& 'a str>),
+
+            // GashCommandLine should not allow running a line that has a bad command in it
+            GashCommand::BadCommand => panic!("ERROR: Attempted to run BadCommand"),
+        }
     }
 
     // Testing: ignore.
