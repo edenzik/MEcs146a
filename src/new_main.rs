@@ -83,7 +83,7 @@ impl <'a>Shell<'a> {
 
                 // Decide which type of thread to spawn (history is special case)
                 match program {
-                    "history" => { // TODO: Put History Thread here, feed pipe or print }
+                "history" => { /* TODO: Put History Thread here, feed pipe or print */ }
                     _ => { // Spawn master thread, returns join handle, 
 
                         // Spawn command
@@ -147,15 +147,16 @@ impl <'a>Shell<'a> {
             history.push(String::from_str(cmd_line));
         }
     }
+}
 
     // Runs command with args
     // Validates by calling cmd_exists() first
     // Returns handle to the Command after spawning it
     fn run_cmd(&self, program: &str, args: &[&str]) -> Result<Child>{
         if self.cmd_exists(program) {
-        Command::new(program).args(args)
-                .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
-                .stderr(process::Stdio::capture()).spawn()
+            Command::new(program).args(args)
+            .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
+            .stderr(process::Stdio::capture()).spawn()
         } else {
             Err("Command not found")
         }
@@ -172,7 +173,7 @@ fn get_cmdline_from_args() -> Option<String> {
     let args = os::args();
 
     let opts = &[
-        getopts::optopt("c", "", "", "")
+    getopts::optopt("c", "", "", "")
     ];
 
     getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
@@ -194,7 +195,7 @@ impl<'a> Iterator for StdOutIter {
         
         let output_str = match self.out.read(buffer) {
             Ok(length) => if length == 0 { return None }
-                            else { str::from_utf8(&buffer[0..length]) },
+            else { str::from_utf8(&buffer[0..length]) },
             Err(_)   => { return None },
         };
 
