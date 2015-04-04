@@ -207,7 +207,61 @@ impl<'a> GashCommand<'a> {
     fn run(&self, thread_tx : mpsc::Sender, thread_rx : mpsc::Receiver) -> thread::JoinHandle {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
-            GashCommand::Normal(gash_operation) => {}
+            GashCommand::Normal(gash_operation) => { thread::spawn( move || {
+
+                        // Spawn command as a process
+                        let process_handle = gash_operation.run_cmd();
+
+                        // Spawn helper threads
+                        let in_helper = match rx {
+                            Some(receiver) => {// Spawn a thread to handle in pipe
+                                let stdin = process_handle.stdin;
+                                thread::scoped(move || {
+                                    // Feed process from input channel until channel closes
+                                    loop {
+                                        let write_result = match receiver.recv() {
+                                            Ok(msg) => stdin.write_all(msg.as_bytes());
+                                            Err(_) => { break }
+                                        }
+                                        match write_result {
+                                            Ok(_) => { continue; }
+                                            Err(_) => { println!("Error: Failed writing to channel"); break; }
+                                        }
+                                    }
+                                })
+                            }
+                            None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
+                        }
+                        let out_helper = match tx {
+                            Some(sender) => {// Spawn a thread to pass on out pipe
+                                let stdout = process_handle.stdout;
+                                thread::scoped(move || {
+                                    let process_reader = StdOutIter{ out : stdout };
+
+                                    for output in process_reader {
+                                        sender.send(output)
+                                    }
+                                })
+                            }
+                            None => { // Spawn a thread to print from out pipe
+                                let stdout = process_handle.stdout;
+                                thread::scoped(move || {
+                                    let process_reader = StdOutIter{ out : stdout };
+
+                                    for output in process_reader {
+                                        print!("{}", output);
+                                    }
+                                })
+
+                            }
+                        }
+
+                        // Helper thread handles drop, joining on them.
+
+                    }
+            })
+
+            }
 
             // No process--use thread to read history
             GashCommand::History => {}
@@ -228,43 +282,35 @@ impl<'a> GashCommand<'a> {
             }
 
             // Similar to Normal, but have input helper thread feed from file instead of channel
-            GashCommand::InputRedirect( gash_operation, Box(file_name) ) => {}
+            GashCommand::InputRedirect( gash_operation, file_name ) => {}
 
             // Similar to Normal, but have output helper thread feed to file instead of channel
-            GashCommand::OutputRedirect( gash_operation, Box(file_name) ) => {}
+            GashCommand::OutputRedirect( gash_operation, file_name ) => {}
 
             // GashCommandLine should not allow running a line that has a bad command in it
             GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
         }
     }
 
-    // Testing: ignore.
-    fn spawn(&self){
-        thread::scoped(move || {println!("this is thread number ");});
-    }
-
-    /*
-    fn run(&self){
-        match *self {
-            GashCommand::Normal(operation) => {
-                
-            },
-            _ => {},
-        }
-    }*/
-
-}
-
+}   // End of impl GashCommand
 
 
 /// A GashOperation is the basic unit of an operation, contains an operator ("echo") 
 /// and a vector of operands (arguments to operator).
-struct GashOperation<'a>{
+struct GashOperation<'a> {
     operator : Box<& 'a str>,
     operands: Box<Vec<& 'a str>>
 }
 
-
+impl<'a> GashOperation<'a> {
+    // Runs command with args
+    // Returns handle to the Command after spawning it
+    fn run_cmd(&self) -> Result<Child>{
+        Command::new(*self.operator).args(&*self.operands.as_slice())
+        .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
+        .stderr(process::Stdio::capture()).spawn()
+    }
+}
 
 
 
@@ -350,22 +396,6 @@ impl <'a>Shell<'a> {
         };
     }
 
-    fn run_cmd(&self, program: &str, argv: &[&str]) {
-        if self.cmd_exists(program) {
-            let output = Command::new(program).args(argv).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
-            let stderr=String::from_utf8_lossy(&output.stderr);
-            let stdout=String::from_utf8_lossy(&output.stdout);
-            if !"".eq(stdout.as_slice()) {
-                print!("{}", stdout);
-            }
-            if !"".eq(stderr.as_slice()) {
-                print!("{}", stderr);
-            }
-        } else {
-            println!("{}: command not found", program);
-        }
-    }
-
     fn cmd_exists(&self, cmd_path: &str) -> bool {
         Command::new("which").arg(cmd_path).stdout(Stdio::capture()).status().unwrap().success()
     }
@@ -381,5 +411,3 @@ fn get_cmdline_from_args() -> Option<String> {
 
     getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
 }
-
-
