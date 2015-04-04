@@ -3,7 +3,6 @@ extern crate getopts;
 use std::thread;
 use getopts::{optopt, getopts};
 use std::old_io::BufferedReader;
-use std::old_io::stdin;
 use std::{old_io, os};
 use std::str;
 use std::sync::mpsc;
@@ -24,7 +23,7 @@ impl <'a>Shell<'a> {
 
     // Begins the REPL loop
     fn run(&self) {
-        let mut stdin = BufferedReader::new(stdin());
+        let mut stdin = BufferedReader::new(old_io::stdin());
         let mut history: Vec<String> = Vec::new();
 
         // Main REPL loop, may spawn background jobs to finish
@@ -35,10 +34,13 @@ impl <'a>Shell<'a> {
 
             // Try to read from stdin
             // If successful, create a GashCommandLine, otherwise let user try again
-            let gash_command_line = match stdin.read_line() {
-                Ok(input_line) => gash::GashCommandLine::new(input_line, history.clone()),
+            let command_string = match stdin.read_line() {
+                Ok(input_line) => input_line,
                 Err(msg) => { println!("Failed to read from stdin: {}", msg); continue; }
             };
+
+            let gash_command_line = 
+                gash::GashCommandLine::new(command_string, history.clone());
 
             // Branch depending on parse of input
             match gash_command_line {
@@ -54,7 +56,7 @@ impl <'a>Shell<'a> {
             };
 
             // Add this history to the record
-            history.push(String::from_str(gash_command_line));
+            history.push( command_string );
         }
     }
 }
