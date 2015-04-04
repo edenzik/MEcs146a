@@ -12,6 +12,8 @@ use std::sync::mpsc::{channel};
 use std::error::Error;
 use std::io::prelude::*;
 use std::process::{Command, Stdio};
+
+
 fn main() {
     let opt_cmd_line = get_cmdline_from_args();
 
@@ -53,28 +55,31 @@ enum GashCommandLine<'a> {
 /// Implements GashCommandLine
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
-    fn new(line : & 'a str) -> GashCommandLine<'a> {
-        // If the line is empty, this is an empty command
-        if line.is_empty() {
-            return GashCommandLine::Empty;
-        }
-        // If the first word is exit, this is an exit command
-        if line.words().next().unwrap() == "exit" {
-            return GashCommandLine::Exit;
-        }
-        if line.contains("||") || line.contains("&&"){
-            return GashCommandLine::UnsupportedCommand;
-        }
-        let mut commands = Vec::new();
-        // Split and parse each command as a new GashCommand
-        for command_str in line.split('|'){
-            commands.push(GashCommand::new(command_str));
-        }
-        // If this command ends with an & (potential bug - see '&&) make it a background
-        // command. Otherwise - Foreground.
-        match line.chars().last().unwrap(){
-            '&' => GashCommandLine::Background(commands),
-            _   => GashCommandLine::Foreground(commands),           
+    fn new(input_line : & 'a str) -> GashCommandLine<'a> {
+
+        if input_line.is_empty() {
+            // If the line is empty, this is an empty command
+            GashCommandLine::Empty
+        } else if input_line.words().next().unwrap() == "exit" {
+            // If the first word is exit, this is an exit command
+            GashCommandLine::Exit
+        } else if input_line.contains("||") || input_line.contains("&&"){
+            // Multiple commands per line are not supported
+            GashCommandLine::UnsupportedCommand
+        } else {
+            // Else case: one or more subcommands piped together
+            // Background/Foreground is handled by return type
+            let mut gash_command_vec = Vec::new();
+            // Split and parse each command as a new GashCommand
+            for command_str in input_line.split('|'){
+                gash_command_vec.push(GashCommand::new(command_str));
+            }
+            // If this command ends with an & (potential bug - see '&&) make it a background
+            // command. Otherwise - Foreground.
+            match input_line.chars().last().unwrap(){
+                '&' => GashCommandLine::Background(gash_command_vec),
+                _   => GashCommandLine::Foreground(gash_command_vec),           
+            }
         }
     }
 }
@@ -109,9 +114,10 @@ impl<'a> GashCommand<'a> {
         let operator = full_command_words.next().unwrap();
         // Matches on operator, dispatches GashCommand
         match operator {
-            "cd" => return GashCommand::ChangeDirectory(Box::new(full_command_words.next().unwrap())),
+            "cd" => GashCommand::ChangeDirectory(
+                Box::new( full_command_words.next().unwrap() ) ),
 
-            "history" =>        return GashCommand::History,
+            "history" => GashCommand::History,
 
             // Output redirect, splits further to get location of directory
             _   if full_command.contains(">") => {
@@ -132,19 +138,23 @@ impl<'a> GashCommand<'a> {
                 GashCommand::InputRedirect(
                     GashOperation{ operator:Box::new(operator),
                         operands:Box::new(tokens.collect()) },
-                    Box::new(command.next().unwrap()) );
+                    Box::new(command.next().unwrap()) )
             }
 
-            //Otherwise, this is just a normal command
-            _   =>  return GashCommand::Normal(
-                GashOperation{ operator:Box::new(operator),operands:Box::new(full_command_words.collect()) } ),
+            // Otherwise, this is just a normal command
+            _   =>  GashCommand::Normal(
+                GashOperation{ operator:Box::new(operator),
+                    operands:Box::new(full_command_words.collect()) } ),
         }
+        /* This should go inside the match as part of the valid check
 
-        //If match doesn't get executed, we still need to return a command. Hence - bad command.
+        // If match doesn't get executed, we still need to return a command. 
+        // Hence - bad command.
         GashCommand::BadCommand
+        */
     }
 
-    //Testing: ignore.
+    // Testing: ignore.
     fn spawn(&self){
         thread::scoped(move || {println!("this is thread number ");});
     }
@@ -163,8 +173,8 @@ impl<'a> GashCommand<'a> {
 
 
 
-///A GashOperation is the basic unit of an operation, contains an operator ("echo") and a vector of
-///operands (arguments to operator).
+/// A GashOperation is the basic unit of an operation, contains an operator ("echo") 
+/// and a vector of operands (arguments to operator).
 struct GashOperation<'a>{
     operator : Box<& 'a str>,
     operands: Box<Vec<& 'a str>>
