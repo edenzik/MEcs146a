@@ -62,7 +62,9 @@ impl<'a> GashCommandLine<'a> {
         if line.words().next().unwrap() == "exit" {
             return GashCommandLine::Exit;
         }
-        if line.
+        if line.contains("||") || line.contains("&&"){
+            return GashCommandLine::UnsupportedCommand;
+        }
         let mut commands = Vec::new();
         // Split and parse each command as a new GashCommand
         for command_str in line.split('|'){
@@ -107,7 +109,7 @@ impl<'a> GashCommand<'a> {
         let operator = full_command_words.next().unwrap();
         // Matches on operator, dispatches GashCommand
         match operator {
-            "cd" => return GashCommand::ChangeDirectory(Box::new(command.words().next().unwrap())),
+            "cd" => return GashCommand::ChangeDirectory(Box::new(full_command_words.next().unwrap())),
 
             "history" =>        return GashCommand::History,
 
@@ -123,8 +125,8 @@ impl<'a> GashCommand<'a> {
             }
 
             // Input redirect, same as above
-            _   if command.contains("<") => {
-                let mut command = command.split_str("<");
+            _   if full_command.contains("<") => {
+                let mut command = full_command.split_str("<");
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                 GashCommand::InputRedirect(
