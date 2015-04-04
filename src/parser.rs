@@ -109,12 +109,18 @@ impl<'a> GashCommandLine<'a> {
 
         match *self {
             Background(command_vec) => {
+                // Get channel handles
+                let tx = sender_stack.pop().unwrap();
+                let rx = receiver_stack.pop().unwrap();
                 // Spawn each as an unscoped thread, let handles drop
                 for gash_command in command_vec.iter() {
                     gash_command.run(tx, rx).spawn().unwrap();
                 }
             }
             Foreground(command_vec) => {
+                // Get channel handles
+                let tx = sender_stack.pop().unwrap();
+                let rx = receiver_stack.pop().unwrap();
                 // Spawn each as a scoped thread. Drop handles.
                 let mut handles = Vec::new();
                 for gash_command in command_vec.iter() {
