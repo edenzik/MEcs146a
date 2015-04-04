@@ -201,6 +201,10 @@ impl<'a> GashCommand<'a> {
         */
     }
 
+    fn run(thread_tx : mpsc::Sender, thread_rx : mpsc::Receiver) -> thread::Builder {
+        
+    }
+
     // Testing: ignore.
     fn spawn(&self){
         thread::scoped(move || {println!("this is thread number ");});
