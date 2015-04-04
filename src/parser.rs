@@ -148,7 +148,19 @@ impl<'a> GashCommand<'a> {
     fn spawn(&self){
         thread::scoped(move || {println!("this is thread number ");});
     }
+
+    /*
+    fn run(&self){
+        match *self {
+            GashCommand::Normal(operation) => {
+                
+            },
+            _ => {},
+        }
+    }*/
+
 }
+
 
 
 ///A GashOperation is the basic unit of an operation, contains an operator ("echo") and a vector of
