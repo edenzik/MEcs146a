@@ -13,6 +13,16 @@ use std::io::prelude::*;
 use std::process::{Command, Stdio};
 mod gash;
 
+fn main() {
+    let opt_cmd_line = get_cmdline_from_args();
+
+    match opt_cmd_line {
+        Some(cmd_line) => Shell::new("").run_cmdline(cmd_line.as_slice()),
+        None           => Shell::new("gash > ").run(),
+    }
+}
+
+
 struct Shell<'a> {
     cmd_prompt: &'a str,
 }
