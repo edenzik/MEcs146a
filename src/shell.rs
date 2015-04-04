@@ -36,19 +36,21 @@ impl <'a>Shell<'a> {
             // Try to read from stdin
             // If successful, create a GashCommandLine, otherwise let user try again
             let gash_command_line = match stdin.read_line() {
-                Ok(input_line) => GashCommandLine::new(input_line, history.clone()),
+                Ok(input_line) => gash::GashCommandLine::new(input_line, history.clone()),
                 Err(msg) => { println!("Failed to read from stdin: {}", msg); continue; }
             };
 
             // Branch depending on parse of input
-            match gash_cmd_line {
+            match gash_command_line {
                 // Special cases:
-                Empty => { continue; }  // Present another prompt
-                Exit => { break; }      // End REPL loop
-                UnsupportedCommand(msg) => { println!("{}", msg); continue; } // Invalid input
+                gash::GashCommandLine::Empty => { continue; }  // Present another prompt
+                gash::GashCommandLine::Exit => { break; }      // End REPL loop
                 
+                // Invalid input
+                gash::GashCommandLine::UnsupportedCommand(msg) => { println!("{}", msg); continue; }
+
                 // Else, run this well-formed batch of commands
-                _ => { gash_cmd_line.run_batch(); }
+                _ => { gash_command_line.run_batch(); }
             };
 
             // Add this history to the record
