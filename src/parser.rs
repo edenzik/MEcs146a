@@ -35,26 +35,38 @@ fn old_main() {
     }
 }
 
-
+///Gash command line is the main unit containing a line of commands. It is represented
+///here as a Vector to GashCommands
 enum GashCommandLine<'a> {
+    ///A foreground command is a standard command to run
     Foreground(Vec<GashCommand<'a>>),
+    ///A background command is a line of commands ending with an &
     Background(Vec<GashCommand<'a>>),
+    ///Empty command is an empty line
     Empty,
+    ///Exit is a command which starts with 'exit'
     Exit
 }
 
+///Implements GashCommandLine
 impl<'a> GashCommandLine<'a> {
+    ///Constructor for a GashCommandLine
     fn new(line : & 'a str) -> GashCommandLine<'a> {
+        //If the line is empty, this is an empty command
         if line.is_empty() {
             return GashCommandLine::Empty;
         }
+        //If the first word is exit, this is an exit command
         if line.words().next().unwrap() == "exit" {
             return GashCommandLine::Exit;
         }
         let mut commands = Vec::new();
+        //Split and parse each command as a new GashCommand
         for command_str in line.split('|'){
             commands.push(GashCommand::new(command_str));
         }
+        //If this command ends with an & (potential bug - see '&&) make it a background
+        //command. Otherwise - Foreground.
         match line.chars().last().unwrap(){
             '&' => GashCommandLine::Background(commands),
             _   => GashCommandLine::Foreground(commands),           
@@ -62,40 +74,69 @@ impl<'a> GashCommandLine<'a> {
     }
 }
 
+///A gash command is a single command, separated from other commands by '|'.
+enum GashCommand<'a> {
+    ///A normal command is a command which can have STDIN, and has STDOUT and STDERR. Just
+    ///like input and output redirect, it contains a Gash operation to execute.
+    Normal(GashOperation<'a>),
+    ///A history command is "meta", in that it refers to old commands
+    History,
+    ///A cd command changes the wd for the shell, its only content is a string containing the
+    ///path of the directory to change to
+    ChangeDirectory(Box<& 'a str>),
+    ///Input redirect contains a GashOperation and a string, file directory to redirect input
+    ///to
+    InputRedirect(GashOperation<'a>, Box<& 'a str>),
+    ///Output redirect - see input redirect.
+    OutputRedirect(GashOperation<'a>, Box<& 'a str>),
+    ///A bad command, due to bad parsing.
+    BadCommand,
+}
+
+
+///A gash command implementation
 impl<'a> GashCommand<'a> {
+    ///Constructor for GashCommand, takes in the wording of the command
     fn new(command : & 'a str) -> GashCommand<'a> {
+        //Separates command into tokens
         let mut tokens = command.words();
+        //Operator - first token
         let operator = tokens.next().unwrap();
+        //Matches on operator, dispatches commands
         match operator {
             "cd" => return GashCommand::ChangeDirectory(Box::new(command.words().next().unwrap())),
 
             "history" =>        return GashCommand::History,
-
+            //Output redirect, splits further to get location of directory
             _   if command.contains(">") => {
                 let mut command = command.split_str(">");
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                 GashCommand::OutputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));},
-            _   if command.contains(">") => {
-                let mut command = command.split_str(">");
+            //See above
+            _   if command.contains("<") => {
+                let mut command = command.split_str("<");
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                GashCommand::InputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));
 
                 },
-
-                _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
+            //Otherwise, this is just a normal command
+             _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
         }
+        //If match doesn't get executed, we still need to return a command. Hence - bad command.
         GashCommand::BadCommand
     }
-
+    
+    //Testing: ignore.
     fn spawn(&self){
         thread::scoped(move || {println!("this is thread number ");});
     }
 }
 
 
-
+///A GashOperation is the basic unit of an operation, contains an operator ("echo") and a vector of
+///operands (arguments to operator).
 struct GashOperation<'a>{
     operator : Box<& 'a str>,
     operands: Box<Vec<& 'a str>>
@@ -103,14 +144,6 @@ struct GashOperation<'a>{
 
 
 
-enum GashCommand<'a> {
-    Normal(GashOperation<'a>),
-    History,
-    ChangeDirectory(Box<& 'a str>),
-    InputRedirect(GashOperation<'a>, Box<& 'a str>),
-    OutputRedirect(GashOperation<'a>, Box<& 'a str>),
-    BadCommand,
-}
 
 
 
