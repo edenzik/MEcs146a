@@ -44,6 +44,8 @@ enum GashCommandLine<'a> {
     Background(Vec<GashCommand<'a>>),
     ///Empty command is an empty line
     Empty,
+    ///Unsupported command (like && or ||)
+    UnsupportedCommand,
     ///Exit is a command which starts with 'exit'
     Exit
 }
@@ -60,6 +62,7 @@ impl<'a> GashCommandLine<'a> {
         if line.words().next().unwrap() == "exit" {
             return GashCommandLine::Exit;
         }
+        if line.
         let mut commands = Vec::new();
         //Split and parse each command as a new GashCommand
         for command_str in line.split('|'){
@@ -113,21 +116,21 @@ impl<'a> GashCommand<'a> {
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                 GashCommand::OutputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));},
-            //See above
-            _   if command.contains("<") => {
-                let mut command = command.split_str("<");
-                let mut tokens = command.next().unwrap().words();
-                let operator = tokens.next().unwrap();
-               GashCommand::InputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));
+                //See above
+                _   if command.contains("<") => {
+                    let mut command = command.split_str("<");
+                    let mut tokens = command.next().unwrap().words();
+                    let operator = tokens.next().unwrap();
+                    GashCommand::InputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));
 
                 },
-            //Otherwise, this is just a normal command
-             _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
+                //Otherwise, this is just a normal command
+                _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
         }
         //If match doesn't get executed, we still need to return a command. Hence - bad command.
         GashCommand::BadCommand
     }
-    
+
     //Testing: ignore.
     fn spawn(&self){
         thread::scoped(move || {println!("this is thread number ");});
@@ -183,11 +186,21 @@ impl <'a>Shell<'a> {
     }
 
     fn run_cmds(&self, cmds: Vec<GashCommand>){
-        for cmd in cmds {
+        let mut rx_stack= Vec::new();
+        let mut tx_stack = Vec::new();
+
+        // Initialize a Vec full of channels
+        tx_stack.push(None);
+        for _ in 0..(cmds.len() - 1) {
             let (tx, rx) = channel::<String>();
+            rx_stack.push(Some(rx));
+            tx_stack.push(Some(tx));
+        }
+        rx_stack.push(None);
+        for cmd in cmds { 
             match cmd {
                 GashCommand::Normal(op) => {
-                    let output = Command::new(*op.operator).args(&*op.operands.as_slice()).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
+                    let output = Command::new(*op.operator).args(&*op.operands.as_slice()).stdin().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
                     let stderr=String::from_utf8_lossy(&output.stderr);
                     let stdout=String::from_utf8_lossy(&output.stdout);
                     if !"".eq(stdout.as_slice()) {
