@@ -214,16 +214,27 @@ impl<'a> GashCommand<'a> {
 
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
-            GashCommand::ChangeDirectory(Box<& 'a str>),
+            GashCommand::ChangeDirectory( file_name ) => {
+                match (thread_tx, thread_rx) {
+                    // If both none, actually change the directory
+                    (None, None) => { thread::spawn(move || {
+                        match *file_name { 
+                            None => {os::change_dir(&os::homedir().unwrap());}
+                            Some(path) => {os::change_dir(&Path::new(path)); }
+                        }
+                    }).ok() }
+                    _ => { thread::spawn(move || {} ).ok() } // Do nothing
+                }
+            }
 
             // Similar to Normal, but have input helper thread feed from file instead of channel
-            GashCommand::InputRedirect(gash_operation, Box<& 'a str>),
+            GashCommand::InputRedirect( gash_operation, Box(file_name) ) => {}
 
             // Similar to Normal, but have output helper thread feed to file instead of channel
-            GashCommand::OutputRedirect(gash_operation, Box<& 'a str>),
+            GashCommand::OutputRedirect( gash_operation, Box(file_name) ) => {}
 
             // GashCommandLine should not allow running a line that has a bad command in it
-            GashCommand::BadCommand => panic!("ERROR: Attempted to run BadCommand"),
+            GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
         }
     }
 
