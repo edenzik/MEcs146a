@@ -13,16 +13,6 @@ use std::io::prelude::*;
 use std::process::{Command, Stdio};
 mod gash;
 
-fn main() {
-    let opt_cmd_line = get_cmdline_from_args();
-
-    match opt_cmd_line {
-        Some(cmd_line) => Shell::new("").run_cmdline(cmd_line.as_slice()),
-        None           => Shell::new("gash > ").run(),
-    }
-}
-
-
 struct Shell<'a> {
     cmd_prompt: &'a str,
 }
@@ -32,77 +22,42 @@ impl <'a>Shell<'a> {
         Shell { cmd_prompt: prompt_str }
     }
 
+    // Begins the REPL loop
     fn run(&self) {
         let mut stdin = BufferedReader::new(stdin());
         let mut history: Vec<String> = Vec::new();
+
+        // Main REPL loop, may spawn background jobs to finish
         loop {
+            // Get command string from user
             old_io::stdio::print(self.cmd_prompt.as_slice());
             old_io::stdio::flush();
-            let line = stdin.read_line().unwrap();
-            let cmd_line = line.trim();
-            let command = GashCommandLine::new(cmd_line);
-            match command {
-                GashCommandLine::Foreground(cmds) => self.run_cmds(cmds),
-                GashCommandLine::Background(cmds) => println!("back task!"),
-                GashCommandLine::Exit             => return,
-                _                                 => println!("other")
-            }
 
+            // Try to read from stdin
+            // If successful, create a GashCommandLine, otherwise let user try again
+            let gash_command_line = match stdin.read_line() {
+                Ok(input_line) => GashCommandLine::new(input_line, history.clone()),
+                Err(msg) => { println!("Failed to read from stdin: {}", msg); continue; }
+            };
+
+            // Branch depending on parse of input
+            match gash_cmd_line {
+                // Special cases:
+                Empty => { continue; }  // Present another prompt
+                Exit => { break; }      // End REPL loop
+                UnsupportedCommand(msg) => { println!("{}", msg); continue; } // Invalid input
+                
+                // Else, run this well-formed batch of commands
+                _ => { gash_cmd_line.run_batch(); }
+            };
+
+            // Add this history to the record
             history.push(String::from_str(cmd_line));
         }
     }
-
-    fn run_cmds(&self, cmds: Vec<GashCommand>){
-        let mut rx_stack= Vec::new();
-        let mut tx_stack = Vec::new();
-
-        // Initialize a Vec full of channels
-        tx_stack.push(None);
-        for _ in 0..(cmds.len() - 1) {
-            let (tx, rx) = channel::<String>();
-            rx_stack.push(Some(rx));
-            tx_stack.push(Some(tx));
-        }
-        rx_stack.push(None);
-        for cmd in cmds { 
-            match cmd {
-                GashCommand::Normal(op) => {
-                    let output = Command::new(*op.operator).args(&*op.operands.as_slice()).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
-                    let stderr=String::from_utf8_lossy(&output.stderr);
-                    let stdout=String::from_utf8_lossy(&output.stdout);
-                    if !"".eq(stdout.as_slice()) {
-                        print!("{}", stdout);
-                    }
-                    if !"".eq(stderr.as_slice()) {
-                        print!("{}", stderr);
-                    }
-
-                },
-                _ => println!("shit happens")
-            };
-        }
-    }
-
-    fn run_cmdline(&self, cmd_line: &str) {
-        let argv: Vec<&str> = cmd_line.split(' ').filter_map(|x| {
-            if x == "" {
-                None
-            } else {
-                Some(x)
-            }
-        }).collect();
-
-        match argv.first() {
-            Some(&program) => self.run_cmd(program, argv.tail()),
-            None => (),
-        };
-    }
-
-    fn cmd_exists(&self, cmd_path: &str) -> bool {
-        Command::new("which").arg(cmd_path).stdout(Stdio::capture()).status().unwrap().success()
-    }
 }
 
+// Code supplied as part of initial setup. Used for executing a single command with gash.
 fn get_cmdline_from_args() -> Option<String> {
     /* Begin processing program arguments and initiate the parameters. */
     let args = os::args();
@@ -112,4 +67,13 @@ fn get_cmdline_from_args() -> Option<String> {
     ];
 
     getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
+}
+
+fn main() {
+    let opt_cmd_line = get_cmdline_from_args();
+
+    match opt_cmd_line {
+        Some(cmd_line) => Shell::new("").run_cmdline(cmd_line.as_slice()),
+        None           => Shell::new("gash > ").run(),
+    }
 }
