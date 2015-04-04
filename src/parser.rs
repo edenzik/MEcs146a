@@ -82,6 +82,38 @@ impl<'a> GashCommandLine<'a> {
             }
         }
     }
+
+    /* Example usage of run_batch:
+        let gash_cmd_line = GashCommandLine::new(input_line);
+        match gash_cmd_line {
+            Empty => { continue; }
+            Exit => { break; }
+            UnsupportedCommand(msg) => { println!("{}", msg); continue; }
+            _ => { gash_cmd_line.run_batch(); }
+        };
+
+    */
+
+    fn run_batch(&self) {
+        
+        // **CREATE CHANNEL STACKS HERE**
+
+        match *self {
+            Background(command_vec) => {
+                // Spawn each as an unscoped thread, let handles drop
+                for gash_command in command_vec.iter() {
+                    gash_command.run(tx, rx).spawn().unwrap();
+                }
+            }
+            Foreground(command_vec) => {
+                // Spawn each as a scoped thread. Drop handles.
+                let mut handles = Vec::new();
+                for gash_command in command_vec.iter() {
+                    handles.push( gash_command.run(tx, rx).scoped().unwrap() );
+                }
+            }
+        }
+    }
 }
 
 /// A gash command is a single command, separated from other commands by '|'.
