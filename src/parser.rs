@@ -209,59 +209,56 @@ impl<'a> GashCommand<'a> {
             // Standard form, make process and helper threads to connect pipes and channels
             GashCommand::Normal(gash_operation) => { thread::spawn( move || {
 
-                        // Spawn command as a process
-                        let process_handle = gash_operation.run_cmd();
+                // Spawn command as a process
+                let process_handle = gash_operation.run_cmd();
 
-                        // Spawn helper threads
-                        let in_helper = match rx {
-                            Some(receiver) => {// Spawn a thread to handle in pipe
-                                let stdin = process_handle.stdin;
-                                thread::scoped(move || {
-                                    // Feed process from input channel until channel closes
-                                    loop {
-                                        let write_result = match receiver.recv() {
-                                            Ok(msg) => stdin.write_all(msg.as_bytes());
-                                            Err(_) => { break }
-                                        }
-                                        match write_result {
-                                            Ok(_) => { continue; }
-                                            Err(_) => { println!("Error: Failed writing to channel"); break; }
-                                        }
-                                    }
-                                })
+                // Spawn helper threads
+                let in_helper = match rx {
+                    Some(receiver) => {// Spawn a thread to handle in pipe
+                        let stdin = process_handle.stdin;
+                        thread::scoped(move || {
+                            // Feed process from input channel until channel closes
+                            loop {
+                                let write_result = match receiver.recv() {
+                                    Ok(msg) => stdin.write_all(msg.as_bytes());
+                                    Err(_) => { break }
+                                }
+                                match write_result {
+                                    Ok(_) => { continue; }
+                                    Err(_) => { println!("Error: Failed writing to channel"); break; }
+                                }
                             }
-                            None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
-                        }
-                        let out_helper = match tx {
-                            Some(sender) => {// Spawn a thread to pass on out pipe
-                                let stdout = process_handle.stdout;
-                                thread::scoped(move || {
-                                    let process_reader = StdOutIter{ out : stdout };
+                        })
+                    }
+                    None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
+                }
+                let out_helper = match tx {
+                    Some(sender) => {// Spawn a thread to pass on out pipe
+                        let stdout = process_handle.stdout;
+                        thread::scoped(move || {
+                            let process_reader = StdOutIter{ out : stdout };
 
-                                    for output in process_reader {
-                                        sender.send(output)
-                                    }
-                                })
+                            for output in process_reader {
+                                sender.send(output)
                             }
-                            None => { // Spawn a thread to print from out pipe
-                                let stdout = process_handle.stdout;
-                                thread::scoped(move || {
-                                    let process_reader = StdOutIter{ out : stdout };
+                        })
+                    }
+                    None => { // Spawn a thread to print from out pipe
+                        let stdout = process_handle.stdout;
+                        thread::scoped(move || {
+                            let process_reader = StdOutIter{ out : stdout };
 
-                                    for output in process_reader {
-                                        print!("{}", output);
-                                    }
-                                })
-
+                            for output in process_reader {
+                                print!("{}", output);
                             }
-                        }
-
-                        // Helper thread handles drop, joining on them.
+                        })
 
                     }
-            })
+                }
 
-            }
+                // Helper thread handles drop, joining on them.
+
+            })}
 
             // No process--use thread to read history
             GashCommand::History => {}
