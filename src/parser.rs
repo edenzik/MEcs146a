@@ -8,7 +8,7 @@ use std::old_io::stdin;
 use std::{old_io, os};
 use std::str;
 use std::sync::mpsc;
-
+use std::sync::mpsc::{channel};
 use std::error::Error;
 use std::io::prelude::*;
 use std::process::{Command, Stdio};
@@ -75,10 +75,16 @@ impl<'a> GashCommand<'a> {
                 let mut command = command.split_str(">");
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
-                GashCommand::OutputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));
-            },
+                GashCommand::OutputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));},
+            _   if command.contains(">") => {
+                let mut command = command.split_str(">");
+                let mut tokens = command.next().unwrap().words();
+                let operator = tokens.next().unwrap();
+               GashCommand::InputRedirect(GashOperation{operator:Box::new(operator), operands:Box::new(tokens.collect())}, Box::new(command.next().unwrap()));
 
-            _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
+                },
+
+                _   =>  return GashCommand::Normal(GashOperation{operator:Box::new(operator),operands:Box::new(tokens.collect())}),
         }
         GashCommand::BadCommand
     }
@@ -145,6 +151,7 @@ impl <'a>Shell<'a> {
 
     fn run_cmds(&self, cmds: Vec<GashCommand>){
         for cmd in cmds {
+            let (tx, rx) = channel::<String>();
             match cmd {
                 GashCommand::Normal(op) => {
                     let output = Command::new(*op.operator).args(&*op.operands.as_slice()).output().unwrap_or_else(|e| {panic!("failed to execute process: {}", e)});
