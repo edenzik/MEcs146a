@@ -34,7 +34,6 @@ enum GashCommandLine<'a> {
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
     fn new(input_line : & 'a str) -> GashCommandLine<'a> {
-
         if input_line.is_empty() {
             // If the line is empty, this is an empty command
             GashCommandLine::Empty
@@ -45,35 +44,40 @@ impl<'a> GashCommandLine<'a> {
             // Multiple commands per line are not supported
             GashCommandLine::UnsupportedCommand
         } else {
-            // Else case: one or more subcommands piped together
-            // Background/Foreground is handled by return type
             let mut gash_command_vec = Vec::new();
-            // Split and parse each command as a new GashCommand
             for command_str in input_line.split('|'){
                 gash_command_vec.push(GashCommand::new(command_str));
             }
-            // If this command ends with an & (potential bug - see '&&) make it a background
-            // command. Otherwise - Foreground.
             match input_line.chars().last().unwrap(){
-                '&' => GashCommandLine::Background(gash_command_vec),
+                '&' => {
+                    let temp_last = gash_command_vec.pop();
+                    temp_last.pop();
+                    gash_command_vec.push(temp_last);
+                    GashCommandLine::Background(gash_command_vec)
+                },
                 _   => GashCommandLine::Foreground(gash_command_vec),           
             }
+            // Else case: one or more subcommands piped together
+            // Background/Foreground is handled by return type
+            // Split and parse each command as a new GashCommand
+            // If this command ends with an & (potential bug - see '&&) make it a background
+            // command. Otherwise - Foreground.
         }
     }
 
     /* Example usage of run_batch:
-        let gash_cmd_line = GashCommandLine::new(input_line);
-        match gash_cmd_line {
-            Empty => { continue; }
-            Exit => { break; }
-            UnsupportedCommand(msg) => { println!("{}", msg); continue; }
-            _ => { gash_cmd_line.run_batch(); }
-        };
+       let gash_cmd_line = GashCommandLine::new(input_line);
+       match gash_cmd_line {
+       Empty => { continue; }
+       Exit => { break; }
+       UnsupportedCommand(msg) => { println!("{}", msg); continue; }
+       _ => { gash_cmd_line.run_batch(); }
+       };
 
-    */
+*/
 
     fn run_batch(&self) {
-        
+
         // Initialize and populate channel Vecs
         let sender_stack = Vec::new();
         let receiver_stack = Vec::new();
@@ -142,18 +146,18 @@ impl<'a> GashCommand<'a> {
             "cd" => GashCommand::ChangeDirectory(
                 Box::new( full_command_words.next().unwrap() ) ),
 
-            "history" => GashCommand::History,
+                "history" => GashCommand::History,
 
-            // Output redirect, splits further to get location of directory
-            _   if full_command.contains(">") => {
-                let mut command = full_command.split_str(">");
-                let mut tokens = command.next().unwrap().words();
-                let operator = tokens.next().unwrap();
-                GashCommand::OutputRedirect( 
-                    GashOperation{ operator:Box::new(operator),
+                // Output redirect, splits further to get location of directory
+                _   if full_command.contains(">") => {
+                    let mut command = full_command.split_str(">");
+                    let mut tokens = command.next().unwrap().words();
+                    let operator = tokens.next().unwrap();
+                    GashCommand::OutputRedirect( 
+                        GashOperation{ operator:Box::new(operator),
                         operands:Box::new(tokens.collect()) },
-                    Box::new(command.next().unwrap()) );
-            }
+                        Box::new(command.next().unwrap()) );
+                }
 
             // Input redirect, same as above
             _   if full_command.contains("<") => {
@@ -162,14 +166,14 @@ impl<'a> GashCommand<'a> {
                 let operator = tokens.next().unwrap();
                 GashCommand::InputRedirect(
                     GashOperation{ operator:Box::new(operator),
-                        operands:Box::new(tokens.collect()) },
+                    operands:Box::new(tokens.collect()) },
                     Box::new(command.next().unwrap()) )
             }
 
             // Otherwise, this is just a normal command
             _   =>  GashCommand::Normal(
                 GashOperation{ operator:Box::new(operator),
-                    operands:Box::new(full_command_words.collect()) } ),
+                operands:Box::new(full_command_words.collect()) } ),
         }
         /* This should go inside the match as part of the valid check
 
@@ -198,9 +202,9 @@ impl<'a> GashCommand<'a> {
                             // Feed process from input channel until channel closes
                             loop {
                                 let write_result = match receiver.recv() {
-                                    Ok(msg) => stdin.write_all(msg.as_bytes());
+                                    Ok(msg) => stdin.write_all(msg.as_bytes()),
                                     Err(_) => { break }
-                                }
+                                };
                                 match write_result {
                                     Ok(_) => { continue; }
                                     Err(_) => { println!("Error: Failed writing to channel"); break; }
@@ -209,7 +213,7 @@ impl<'a> GashCommand<'a> {
                         })
                     }
                     None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
-                }
+                };
                 let out_helper = match tx {
                     Some(sender) => {// Spawn a thread to pass on out pipe
                         let stdout = process_handle.stdout;
@@ -220,7 +224,7 @@ impl<'a> GashCommand<'a> {
                                 sender.send(output)
                             }
                         })
-                    }
+                    },
                     None => { // Spawn a thread to print from out pipe
                         let stdout = process_handle.stdout;
                         thread::scoped(move || {
@@ -229,10 +233,10 @@ impl<'a> GashCommand<'a> {
                             for output in process_reader {
                                 print!("{}", output);
                             }
-                        })
+                        });
 
-                    }
-                }
+                    },
+                };
 
                 // Helper thread handles drop, joining on them.
 
@@ -282,8 +286,8 @@ impl<'a> GashOperation<'a> {
     // Returns handle to the Command after spawning it
     fn run_cmd(&self) -> Result<Child>{
         Command::new(*self.operator).args(&*self.operands.as_slice())
-        .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
-        .stderr(process::Stdio::capture()).spawn()
+            .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
+            .stderr(process::Stdio::capture()).spawn()
     }
 }
 
