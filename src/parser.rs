@@ -96,7 +96,16 @@ impl<'a> GashCommandLine<'a> {
 
     fn run_batch(&self) {
         
-        // **CREATE CHANNEL STACKS HERE**
+        // Initialize and populate channel Vecs
+        let sender_stack = Vec::new();
+        let receiver_stack = Vec::new();
+        sender_stack.push(None);
+        for _ in 0..(num_threads - 1) {
+            let (tx, rx) = channel::<String>();
+            receiver_stack.push(Some(rx));
+            sender_stack.push(Some(tx));
+        }
+        receiver_stack.push(None);
 
         match *self {
             Background(command_vec) => {
