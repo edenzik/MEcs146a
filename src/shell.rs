@@ -59,23 +59,7 @@ impl <'a>Shell<'a> {
     }
 }
 
-// Code supplied as part of initial setup. Used for executing a single command with gash.
-fn get_cmdline_from_args() -> Option<String> {
-    /* Begin processing program arguments and initiate the parameters. */
-    let args = os::args();
-
-    let opts = &[
-    getopts::optopt("c", "", "", "")
-    ];
-
-    getopts::getopts(args.tail(), opts).unwrap().opt_str("c")
-}
-
+// Create and start a new shell
 fn main() {
-    let opt_cmd_line = get_cmdline_from_args();
-
-    match opt_cmd_line {
-        Some(cmd_line) => Shell::new("").run_cmdline(cmd_line.as_slice()),
-        None           => Shell::new("gash > ").run(),
-    }
+    Shell::new("gash > ").run();
 }
