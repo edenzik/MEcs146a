@@ -291,7 +291,7 @@ struct GashOperation<'a> {
 impl<'a> GashOperation<'a> {
     // Runs command with args
     // Returns handle to the Command after spawning it
-    fn run_cmd(&self) -> Result<Child>{
+    fn run_cmd(&self) -> Result<process::Child>{
         process::Command::new(*self.operator).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
             .stderr(process::Stdio::capture()).spawn()
