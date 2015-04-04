@@ -10,7 +10,7 @@ extern crate getopts;
 
 use getopts::{optopt, getopts};
 use std::old_io::BufferedReader;
-use std::process::{Command, Stdio};
+use std::process;
 use std::old_io::stdin;
 use std::{old_io, os};
 use std::str;
