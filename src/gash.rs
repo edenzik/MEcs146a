@@ -1,16 +1,14 @@
-
-
 use std::thread;
 use std::{old_io, os};
 use std::str;
 use std::sync::mpsc;
 use std::process;
-use std::io::{error, Read, Write, Result};
+use std::io::{Read, Write, Result};
 // use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
 /// here as a Vector to GashCommands
-enum GashCommandLine<'a> {
+pub enum GashCommandLine<'a> {
     /// A foreground command is a standard command to run
     Foreground(Vec<GashCommand<'a>>),
     /// A background command is a line of commands ending with an &
@@ -26,7 +24,7 @@ enum GashCommandLine<'a> {
 /// Implements GashCommandLine
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
-    fn new(input_line : & 'a str, history : Vec<String>) -> GashCommandLine<'a> {
+    pub fn new(input_line : & 'a str, history : Vec<String>) -> GashCommandLine<'a> {
         if input_line.is_empty() {
             // If the line is empty, this is an empty command
             GashCommandLine::Empty
@@ -67,7 +65,7 @@ impl<'a> GashCommandLine<'a> {
     }
 
 
-    fn run_batch(&self) {
+    pub fn run_batch(&self) {
 
         // Initialize and populate channel Vecs
         let sender_stack = Vec::new();
