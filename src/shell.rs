@@ -29,10 +29,12 @@ impl <'a>Shell<'a> {
                 Err(msg) => { println!("Failed to read from stdin: {}", msg); continue; }
             };
 
-            let history_string = String::from_str(&command_string);
+            let trimmed_command_string = command_string.trim();
+
+            let history_string = String::from_str(&trimmed_command_string);
 
             let gash_command_line = 
-                gash::GashCommandLine::new( &command_string, history.clone() );
+                gash::GashCommandLine::new( &trimmed_command_string, history.clone() );
 
             // Branch depending on parse of input
             match gash_command_line {
