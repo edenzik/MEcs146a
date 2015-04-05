@@ -252,7 +252,7 @@ impl<'a> GashCommand<'a> {
         rx_channel : Option<mpsc::Receiver<String>>, gash_op : GashOperation)
         -> thread::JoinHandle {
 
-        let args_vec = Vec::new();
+        let mut args_vec = Vec::new();
         for arg in (*gash_op.operands).iter().rev() {
             args_vec.push(arg.to_string().as_slice());
         }
