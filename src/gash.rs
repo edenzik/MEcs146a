@@ -26,7 +26,7 @@ enum GashCommandLine<'a> {
 /// Implements GashCommandLine
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
-    fn new(input_line : & 'a str) -> GashCommandLine<'a> {
+    fn new(input_line : & 'a str, history : Vec<String>) -> GashCommandLine<'a> {
         if input_line.is_empty() {
             // If the line is empty, this is an empty command
             GashCommandLine::Empty
@@ -37,18 +37,18 @@ impl<'a> GashCommandLine<'a> {
             // Multiple commands per line are not supported
             GashCommandLine::UnsupportedCommand
         } else {
-            let mut gash_command_vec = Vec::new();
-            for command_str in input_line.split('|'){
-                gash_command_vec.push(GashCommand::new(command_str));
-            }
             match input_line.chars().last().unwrap(){
                 '&' => {
-                    let temp_last = gash_command_vec.pop();
-                    temp_last.pop();
-                    gash_command_vec.push(temp_last);
-                    GashCommandLine::Background(gash_command_vec)
+                    let removed_tip = String::from_str(input_line);
+                    removed_tip.pop();
+                    let mut gash_command_vec = GashCommandLine::create_gash_commands(&removed_tip, history);
+                    return GashCommandLine::Background(gash_command_vec);
                 },
-                _   => GashCommandLine::Foreground(gash_command_vec),           
+                _   => {
+
+                    let mut gash_command_vec = GashCommandLine::create_gash_commands(input_line, history);
+                    return GashCommandLine::Foreground(gash_command_vec);
+                }
             }
             // Else case: one or more subcommands piped together
             // Background/Foreground is handled by return type
@@ -56,6 +56,14 @@ impl<'a> GashCommandLine<'a> {
             // If this command ends with an & (potential bug - see '&&) make it a background
             // command. Otherwise - Foreground.
         }
+    }
+
+    fn create_gash_commands(input :  & 'a str, history : Vec<String>) -> Vec<GashCommand>{
+        let mut gash_command_vec = Vec::new();
+        for command_str in input.split('|'){
+                gash_command_vec.push(GashCommand::new(command_str, history));
+        }
+        return gash_command_vec;
     }
 
 
@@ -102,7 +110,7 @@ enum GashCommand<'a> {
     /// like input and output redirect, it contains a Gash operation to execute.
     Normal(GashOperation<'a>),
     /// A history command is "meta", in that it refers to old commands
-    History,
+    History(Vec<String>),
     /// A cd command changes the wd for the shell, its only content is a string containing the
     /// path of the directory to change to
     ChangeDirectory(Box<& 'a str>),
@@ -131,7 +139,7 @@ impl<'a> GashCommand<'a> {
             "cd" => GashCommand::ChangeDirectory(
                 Box::new( full_command_words.next().unwrap() ) ),
 
-                "history" => GashCommand::History,
+                "history" => GashCommand::History(history),
 
                 _   if !GashCommand::cmd_exists(operator) => GashCommand::UnsupportedCommand,
 
@@ -180,7 +188,7 @@ impl<'a> GashCommand<'a> {
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
-    fn run(&self, thread_tx : Option<mpsc::Sender<String>>,
+    fn run(& 'a self, thread_tx : Option<mpsc::Sender<String>>,
         thread_rx : Option<mpsc::Receiver<String>>) -> thread::JoinHandle {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
@@ -188,7 +196,7 @@ impl<'a> GashCommand<'a> {
                 thread_rx, gash_operation) }
 
             // No process--use thread to read history
-            GashCommand::History => { panic!("Whoops, forgot to implement history!") }
+            GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
 
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
@@ -196,9 +204,11 @@ impl<'a> GashCommand<'a> {
                 match (thread_tx, thread_rx) {
                     // If both none, actually change the directory
                     (None, None) => { thread::spawn(move || {
-                        match *file_name { 
-                            None => { os::change_dir(&os::homedir().unwrap()); }
-                            Some(path) => { os::change_dir(&Path::new(path)).unwrap(); }
+                       match *file_name { 
+                            "" => {
+                                os::change_dir(&os::homedir().unwrap()); }
+                            path => { 
+                                os::change_dir(&Path::new(path)).unwrap(); }
                         };
                     }) }
                     _ => { thread::spawn(move || {} ) } // Do nothing
