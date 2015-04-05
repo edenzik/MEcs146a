@@ -4,6 +4,7 @@ use std::fs::File;
 use std::str;
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::process;
+use std::result::Result as res;
 use std::io::{self, Read, Write, Result};
 // use std::error::Error;
 
@@ -43,14 +44,18 @@ impl<'a> GashCommandLine<'a> {
                     let removed_tip = input_line.slice_chars(0,input_line.len()-1);
                     let mut gash_command_vec = 
                         GashCommandLine::create_gash_commands(removed_tip, history);
-                    return GashCommandLine::Background(gash_command_vec);
+                    match gash_command_vec {
+                        Err(msg) => return GashCommandLine::InvalidCommand(msg),
+                        Ok(vec) => return GashCommandLine::Background(vec)
+                    }
                 },
                 _   => {
-
                     let mut gash_command_vec =
                         GashCommandLine::create_gash_commands(input_line, history);
-                    //if gash_command_vec.contains(
-                    return GashCommandLine::Foreground(gash_command_vec);
+                    match gash_command_vec {
+                        Err(msg) => return GashCommandLine::InvalidCommand(msg),
+                        Ok(vec) => return GashCommandLine::Foreground(vec)
+                    }
                 }
             }
             // Else case: one or more subcommands piped together
@@ -61,12 +66,18 @@ impl<'a> GashCommandLine<'a> {
         }
     }
 
-    fn create_gash_commands(input :  & 'a str, history : Vec<String>) -> Vec<GashCommand>{
+
+    fn create_gash_commands(input :  & 'a str, history : Vec<String>) -> res<Vec<GashCommand>, & 'a str> {
         let mut gash_command_vec = Vec::new();
         for command_str in input.split('|'){
-            gash_command_vec.push(GashCommand::new(command_str, history.clone()));
+            let command = GashCommand::new(command_str, history.clone());
+            match command {
+                GashCommand::BadCommand(msg) => return Err(*msg),
+                _ => gash_command_vec.push(command)
+            }
+            
         }
-        return gash_command_vec;
+        return Ok(gash_command_vec);
     }
 
 
@@ -206,7 +217,7 @@ impl<'a> GashCommand<'a> {
                                                                                                         thread_rx, gash_operation) }
 
                    // No process--use thread to read history
-                   GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
+                   GashCommand::History(history) => panic!("still didn't implement history"),
 
                    // If tx and rx are None, change system directory. Else do nothing.
                    // This is the observed behavior from testing on Ubuntu 14.04
@@ -260,8 +271,7 @@ impl<'a> GashCommand<'a> {
 
                    // GashCommandLine should not allow running a line that has a bad command in it
                    GashCommand::BadCommand(operator) =>  {
-                       let operator_name = String::from_str(*operator);
-                       return thread::spawn(move||{println!("gash:\t command not found: {}", operator_name)});
+                       panic!("this should not happen");
                    }
                    
                }

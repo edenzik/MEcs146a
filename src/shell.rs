@@ -31,11 +31,14 @@ impl <'a>Shell<'a> {
 
             let trimmed_command_string = command_string.trim();
 
+            if trimmed_command_string.len()>0 &&  trimmed_command_string.as_bytes()[0]==27 { 
+                continue;    
+            }
+
             let history_string = String::from_str(&trimmed_command_string);
 
             let gash_command_line = 
                 gash::GashCommandLine::new( &trimmed_command_string, history.clone() );
-
             // Branch depending on parse of input
             match gash_command_line {
                 // Special cases:
@@ -44,6 +47,10 @@ impl <'a>Shell<'a> {
                 
                 // Invalid input
                 gash::GashCommandLine::UnsupportedCommand(msg) => { println!("{}", msg); continue; }
+
+                // Invalid command
+                gash::GashCommandLine::InvalidCommand(msg) => { println!("gash: command not found: {}", msg); continue; }
+
 
                 // Else, run this well-formed batch of commands
                 _ => { gash_command_line.run_batch(); }
