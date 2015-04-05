@@ -201,7 +201,7 @@ impl<'a> GashCommand<'a> {
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
             GashCommand::ChangeDirectory( file_name ) => {
-                panic!("Whoops, forgot to implement history!")
+                panic!("Whoops, forgot to implement change directory!")
             }
 
             // Similar to Normal, but add another thread to read from file and feed into thread
@@ -253,10 +253,18 @@ impl<'a> GashCommand<'a> {
     // Starts process from GashOperation data, connects process' pipes to channels via threads,
     // and returns handle to overall thread for joining or dropping
     fn start_piped_process<'b>(tx_channel : Option<mpsc::Sender<String>>,
-        rx_channel : Option<mpsc::Receiver<String>>, gash_operation : GashOperation)
+        rx_channel : Option<mpsc::Receiver<String>>, gash_op : GashOperation)
         -> thread::JoinHandle {
 
-          // let process = &mut gash_operation;
+        let args_vec = Vec::new();
+        for arg in (*gash_op.operands).iter().rev() {
+            args_vec.push(arg.to_string().as_slice());
+        }
+
+        let gash_operation = GashOperation { 
+            operator: Box::new( gash_op.operator.to_string().as_slice() ),
+            operands: Box::new( args_vec )
+        };
 
  
         thread::spawn( move || {
