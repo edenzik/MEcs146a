@@ -31,7 +31,25 @@ fn main() {
     // `file` goes out of scope, and the "hello.txt" file gets closed
 }
 
+// This method to read from file and write to channel
 fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
+    -> Result<JoinHandle, io::Error>{
+    
+    let path = Path::new(file_name.as_slice());
+    let file = match File::open(&path) {
+        Err(why) => return Err(why),
+        Ok(f) => f,
+    };
+    Ok( spawn(move || {
+        let f_iter = FileReadIter{file: file};
+        for buffer_amt in f_iter {
+            channel.send(buffer_amt).unwrap();
+        }
+    }) )
+}
+
+// This method to read from channel and write to file
+fn create_thread_io(channel : Receiver<String>, file_name: Box<String>)
     -> Result<JoinHandle, io::Error>{
     let path = Path::new(file_name.as_slice());
     let file = match File::open(&path) {
@@ -39,20 +57,18 @@ fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
         Ok(f) => f,
     };
     Ok( spawn(move || {
-        let f_iter = FileIter{file: file};
+        let f_iter = FileReadIter{file: file};
         for buffer_amt in f_iter {
             channel.send(buffer_amt).unwrap();
         }
     }) )
-
-
 }
 
-struct FileIter {
+struct FileReadIter {
     file: File,
 }
 
-impl<'a> Iterator for FileIter {
+impl<'a> Iterator for FileReadIter {
     type Item = String;
 
     fn next(& mut self) -> Option<String> {
