@@ -5,6 +5,10 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::{JoinHandle, spawn};
 use std::str;
 
+fn main() {
+
+}
+
 // This method to read from file and write to channel
 fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
     -> Result<JoinHandle, io::Error>{

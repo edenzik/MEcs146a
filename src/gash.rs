@@ -1,9 +1,10 @@
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::{old_io, os};
+use std::fs::File;
 use std::str;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Sender, Receiver};
 use std::process;
-use std::io::{Read, Write, Result};
+use std::io::{self, Read, Write, Result};
 // use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
@@ -38,12 +39,14 @@ impl<'a> GashCommandLine<'a> {
             match input_line.chars().last().unwrap(){
                 '&' => {
                     let removed_tip = input_line.slice_chars(0,input_line.len()-1);
-                    let mut gash_command_vec = GashCommandLine::create_gash_commands(removed_tip, history);
+                    let mut gash_command_vec = 
+                        GashCommandLine::create_gash_commands(removed_tip, history);
                     return GashCommandLine::Background(gash_command_vec);
                 },
                 _   => {
 
-                    let mut gash_command_vec = GashCommandLine::create_gash_commands(input_line, history);
+                    let mut gash_command_vec =
+                        GashCommandLine::create_gash_commands(input_line, history);
                     return GashCommandLine::Foreground(gash_command_vec);
                 }
             }
@@ -212,12 +215,7 @@ impl<'a> GashCommand<'a> {
                 let (file_sender, file_receiver) = mpsc::channel::<String>();
 
                 // Thread to read from file and write into newly created channel
-                thread::spawn(move || {
-
-                    // HAVE THIS THREAD READ FROM FILE AT "file_name"
-                    // AND WRITE INTO CHANNEL "file_sender"
-
-                });
+                GashCommand::create_io_reader(file_sender, file_name);
 
                 // Now start command like normal with new channel to read from
                 GashCommand::start_piped_process(thread_tx, Some(file_receiver), gash_operation)
@@ -232,15 +230,11 @@ impl<'a> GashCommand<'a> {
 
                 // Start command like normal with new channel to write to,
                 // grabbing handle to return
-                let handle = GashCommand::start_piped_process(Some(file_sender), thread_rx, gash_operation);
+                let handle = GashCommand::start_piped_process(Some(file_sender), 
+                    thread_rx, gash_operation);
 
                 // Thread to write to file, reading from newly created channel
-                thread::spawn(move || {
-
-                    // HAVE THIS THREAD READ CHANNEL "file_receiver"
-                    // AND WRITE TO FILE "file_name"
-
-                });
+                GashCommand::create_io_writer(file_receiver, file_name);
 
                 handle
 
@@ -269,13 +263,9 @@ impl<'a> GashCommand<'a> {
 
  
         thread::spawn( move || {
-            
-            let process_handle = gash_operation.run_cmd().unwrap();
-            
             // Spawn command as a process
-           // let x = GashOperation{operator:gash_operation.operator.clone(),
-         //  operands:gash_operation.operands.clone()};
-           
+            let process_handle = gash_operation.run_cmd().unwrap();
+                      
             // Spawn helper threads
             let in_helper = match rx_channel {
                 Some(receiver) => {// Spawn a thread to handle in pipe
@@ -323,6 +313,45 @@ impl<'a> GashCommand<'a> {
             // Helper thread handles drop, joining on them.
 
         })
+    }   // End of start_piped_process
+
+    // This method to read from file and write to channel
+    fn create_io_reader(channel : Sender<String>, file_name: Box<&str>)
+        -> Result<JoinHandle>{
+        // Create and validate file object. Return Error early if failure or spawn thread
+        let path = Path::new(file_name.as_slice());
+        let file = match File::open(&path) {
+            Err(why) => return Err(why),
+            Ok(f) => f,
+        };
+        // File created successfully, return thread that will be reading from it
+        Ok( thread::spawn(move || {
+            let f_iter = FileReadIter::new(file);
+            for buffer_amt in f_iter {
+                channel.send(buffer_amt).unwrap();
+            }
+        }) )
+    }
+
+    // This method to read from channel and write to file
+    fn create_io_writer(channel : Receiver<String>, file_name: Box<&str>)
+        -> Result<JoinHandle>{
+        // Create and validate file object. Return Error early if failure or spawn thread
+        let path = Path::new(file_name.as_slice());
+        let mut file = match File::create(&path) {
+            Err(why) => return Err(why),
+            Ok(f) => f,
+        };
+        // File created successfully, return thread that will be writing to it
+        Ok( thread::spawn(move || {
+            // Write data from channel until channel is closed (Err)
+            loop {
+                match channel.recv() {
+                    Ok(msg) => { file.write_all(msg.as_bytes()).unwrap(); }
+                    Err(_) => { break; }    // Channel closed
+                }
+            }
+        }) )
     }
 
 }   // End of impl GashCommand
@@ -373,4 +402,36 @@ impl<'a> Iterator for StdOutIter {
     }
 }
 
+/// FileReadIter for encapsulating reading an entire file BUFFER_SIZE bytes at a time
+struct FileReadIter {
+    file: File,
+}
 
+impl FileReadIter {
+    fn new(file_handle : File) -> FileReadIter {
+        FileReadIter { file : file_handle }
+    }
+}
+
+impl<'a> Iterator for FileReadIter {
+    type Item = String;
+
+    /// each time next is called, BUFFER_SIZE bytes are read and returned as Some(String)
+    /// None signals end of file (due to no data read or Err)
+    fn next(& mut self) -> Option<String> {
+        let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        let buffer = &mut buffer_array;
+        
+        let output_str = match self.file.read(buffer) {
+            Ok(length) => if length == 0 { return None }
+                            else { str::from_utf8(&buffer[0..length]) },
+            Err(_)   => { return None },
+        };
+
+        match output_str {
+            Ok(string) => Some(string.to_string()),
+            Err(_) => panic!("failed to convert stdin to String"),
+        }
+
+    }
+}
