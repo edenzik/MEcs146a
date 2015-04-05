@@ -173,7 +173,8 @@ impl<'a> GashCommand<'a> {
     }
 
     fn cmd_exists(cmd_path: &str) -> bool {
-        process::Command::new("which").arg(cmd_path).stdout(process::Stdio::capture()).status().unwrap().success()
+        process::Command::new("which").arg(cmd_path).stdout(process::Stdio::capture())
+            .status().unwrap().success()
     }
 
 
@@ -181,64 +182,15 @@ impl<'a> GashCommand<'a> {
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
-    fn run(&self, thread_tx : mpsc::Sender<String>, thread_rx : mpsc::Receiver<String>) -> thread::JoinHandle {
+    fn run(&self, thread_tx : mpsc::Sender<String>, thread_rx : mpsc::Receiver<String>)
+        -> thread::JoinHandle {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
-            GashCommand::Normal(gash_operation) => { thread::spawn( move || {
-
-                // Spawn command as a process
-                let process_handle = gash_operation.run_cmd();
-
-                // Spawn helper threads
-                let in_helper = match thread_rx {
-                    Some(receiver) => {// Spawn a thread to handle in pipe
-                        let stdin = process_handle.stdin;
-                        thread::scoped(move || {
-                            // Feed process from input channel until channel closes
-                            loop {
-                                let write_result = match receiver.recv() {
-                                    Ok(msg) => stdin.write_all(msg.as_bytes()),
-                                    Err(_) => { break }
-                                };
-                                match write_result {
-                                    Ok(_) => { continue; }
-                                    Err(_) => { println!("Error: Failed writing to channel"); break; }
-                                }
-                            }
-                        })
-                    }
-                    None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
-                };
-                let out_helper = match thread_tx {
-                    Some(sender) => {// Spawn a thread to pass on out pipe
-                        let stdout = process_handle.stdout;
-                        thread::scoped(move || {
-                            let process_reader = StdOutIter{ out : stdout };
-
-                            for output in process_reader {
-                                sender.send(output)
-                            }
-                        })
-                    },
-                    None => { // Spawn a thread to print from out pipe
-                        let stdout = process_handle.stdout;
-                        thread::scoped(move || {
-                            let process_reader = StdOutIter{ out : stdout };
-
-                            for output in process_reader {
-                                print!("{}", output);
-                            }
-                        });
-
-                    },
-                };
-
-                // Helper thread handles drop, joining on them.
-
-            })}
+            GashCommand::Normal(gash_operation) => { start_piped_process(thread_tx, thread_rx,
+                gash_operation) }
 
             // No process--use thread to read history
-            GashCommand::History => {}
+            GashCommand::History => { }
 
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
@@ -255,15 +207,89 @@ impl<'a> GashCommand<'a> {
                 }
             }
 
-            // Similar to Normal, but have input helper thread feed from file instead of channel
-            GashCommand::InputRedirect( gash_operation, file_name ) => {}
+            // Similar to Normal, but add another thread to read from file and feed into thread
+            GashCommand::InputRedirect( gash_operation, file_name ) => { 
+                // Don't need input channel
+                drop(thread_rx);
+                (file_sender, file_receiver) = mpsc::channel::<String>();
 
-            // Similar to Normal, but have output helper thread feed to file instead of channel
-            GashCommand::OutputRedirect( gash_operation, file_name ) => {}
+                // Thread to read from file and write into newly created channel
+                thread::spawn(move || {
+
+
+
+                }).unwrap();
+
+                // Now start command like normal with new channel to read from
+                start_piped_process(thread_tx, file_receiver, gash_operation)
+
+            }
+
+            // Similar to Normal, add another thread to read from thread and write into file
+            GashCommand::OutputRedirect( gash_operation, file_name ) => { }
 
             // GashCommandLine should not allow running a line that has a bad command in it
             GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
         }
+    }
+
+    // Starts process from GashOperation data, connects process' pipes to channels via threads,
+    // and returns handle to overall thread for joining or dropping
+    fn start_piped_process(tx_channel : mpsc::Sender<String>, rx_channel : mpsc::Receiver<String>,
+        operation_data : GashOperation) -> thread::JoinHandle {
+
+        thread::spawn( move || {
+            // Spawn command as a process
+            let process_handle = gash_operation.run_cmd();
+
+            // Spawn helper threads
+            let in_helper = match rx_channel {
+                Some(receiver) => {// Spawn a thread to handle in pipe
+                    let stdin = process_handle.stdin;
+                    thread::scoped(move || {
+                        // Feed process from input channel until channel closes
+                        loop {
+                            let write_result = match receiver.recv() {
+                                Ok(msg) => stdin.write_all(msg.as_bytes()),
+                                Err(_) => { break }
+                            };
+                            match write_result {
+                                Ok(_) => { continue; }
+                                Err(_) => { println!("Error: Failed writing to channel");
+                                    break; }
+                            }
+                        }
+                    })
+                }
+                None => { let a = process_handle.stdin; None } // No in pipe, just drop handle
+            };
+            let out_helper = match tx_channel {
+                Some(sender) => {// Spawn a thread to pass on out pipe
+                    let stdout = process_handle.stdout;
+                    thread::scoped(move || {
+                        let process_reader = StdOutIter{ out : stdout };
+
+                        for output in process_reader {
+                            sender.send(output)
+                        }
+                    })
+                },
+                None => { // Spawn a thread to print from out pipe
+                    let stdout = process_handle.stdout;
+                    thread::scoped(move || {
+                        let process_reader = StdOutIter{ out : stdout };
+
+                        for output in process_reader {
+                            print!("{}", output);
+                        }
+                    });
+
+                },
+            };
+
+            // Helper thread handles drop, joining on them.
+
+        })
     }
 
 }   // End of impl GashCommand
