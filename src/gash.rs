@@ -201,7 +201,19 @@ impl<'a> GashCommand<'a> {
                    // If tx and rx are None, change system directory. Else do nothing.
                    // This is the observed behavior from testing on Ubuntu 14.04
                    GashCommand::ChangeDirectory( file_name ) => {
-                       panic!("Whoops, forgot to implement change directory!")
+                       match (thread_tx, thread_rx) {
+                           // If both none, actually change the directory
+                           (None, None) => { thread::spawn(move || {
+                               match *file_name { 
+                                   "" => {
+                                       os::change_dir(&os::homedir().unwrap()); }
+                                   path => { 
+                                       os::change_dir(&Path::new(path)).unwrap(); }
+                               };
+                           }) }
+                           _ => { thread::spawn(move || {} ) } // Do nothing
+                       }
+
                    }
 
                    // Similar to Normal, but add another thread to read from file and feed into thread
