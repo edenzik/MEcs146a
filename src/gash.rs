@@ -68,20 +68,20 @@ impl<'a> GashCommandLine<'a> {
 
 
     pub fn run_batch(self) {
-
         // Initialize and populate channel Vecs
         let mut sender_stack = Vec::new();
         let mut receiver_stack = Vec::new();
         sender_stack.push(None);
-        for _ in 0..(5 - 1) {
-            let (tx, rx) = mpsc::channel::<String>();
-            receiver_stack.push(Some(rx));
-            sender_stack.push(Some(tx));
-        }
-        receiver_stack.push(None);
 
         match self {
             GashCommandLine::Background(command_vec) => {
+                for _ in 0..(command_vec.len() - 1) {
+                    let (tx, rx) = mpsc::channel::<String>();
+                    receiver_stack.push(Some(rx));
+                    sender_stack.push(Some(tx));
+                }
+                receiver_stack.push(None);
+
                 // Spawn each as an unscoped thread, let handles drop
                 for gash_command in command_vec.into_iter() {
                     // Get channel handles
@@ -92,6 +92,13 @@ impl<'a> GashCommandLine<'a> {
                 // Let handles drop (detach) and allow command to run in background
             }
             GashCommandLine::Foreground(command_vec) => {
+                for _ in 0..(command_vec.len() - 1) {
+                    let (tx, rx) = mpsc::channel::<String>();
+                    receiver_stack.push(Some(rx));
+                    sender_stack.push(Some(tx));
+                }
+                receiver_stack.push(None);
+
                 // Spawn each as a scoped thread. Drop handles.
                 let mut handles = Vec::new();
                 for gash_command in command_vec.into_iter() {
@@ -210,7 +217,7 @@ impl<'a> GashCommand<'a> {
                                    path => { 
                                        os::change_dir(&Path::new(path)).unwrap(); }
                                };
-                           thread::spawn(move || { }) }
+                               thread::spawn(move || { }) }
                            _ => { thread::spawn(move || {} ) } // Do nothing
                        }
 
