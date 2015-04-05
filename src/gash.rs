@@ -3,8 +3,11 @@
 use std::thread;
 use std::{old_io, os};
 use std::str;
+use std::io::error;
+use std::io::Read;
 use std::sync::mpsc;
 use std::process;
+use std::result::Result;
 use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
@@ -276,7 +279,7 @@ struct GashOperation<'a> {
 impl<'a> GashOperation<'a> {
     // Runs command with args
     // Returns handle to the Command after spawning it
-    fn run_cmd(&self) -> Result<process::Child, Error>{
+    fn run_cmd(&self) -> Result<process::Child, Error> { 
         process::Command::new(*self.operator).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
             .stderr(process::Stdio::capture()).spawn()
