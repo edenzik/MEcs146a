@@ -37,9 +37,8 @@ impl<'a> GashCommandLine<'a> {
         } else {
             match input_line.chars().last().unwrap(){
                 '&' => {
-                    let removed_tip = String::from_str(input_line);
-                    removed_tip.pop();
-                    let mut gash_command_vec = GashCommandLine::create_gash_commands(&removed_tip, history);
+                    let removed_tip = input_line.slice_chars(0,input_line.len()-1);
+                    let mut gash_command_vec = GashCommandLine::create_gash_commands(removed_tip, history);
                     return GashCommandLine::Background(gash_command_vec);
                 },
                 _   => {
@@ -59,17 +58,17 @@ impl<'a> GashCommandLine<'a> {
     fn create_gash_commands(input :  & 'a str, history : Vec<String>) -> Vec<GashCommand>{
         let mut gash_command_vec = Vec::new();
         for command_str in input.split('|'){
-                gash_command_vec.push(GashCommand::new(command_str, history));
+                gash_command_vec.push(GashCommand::new(command_str, history.clone()));
         }
         return gash_command_vec;
     }
 
 
-    pub fn run_batch(&self) {
+    pub fn run_batch(self) {
 
         // Initialize and populate channel Vecs
-        let sender_stack = Vec::new();
-        let receiver_stack = Vec::new();
+        let mut sender_stack = Vec::new();
+        let mut receiver_stack = Vec::new();
         sender_stack.push(None);
         for _ in 0..(5 - 1) {
             let (tx, rx) = mpsc::channel::<String>();
@@ -78,7 +77,7 @@ impl<'a> GashCommandLine<'a> {
         }
         receiver_stack.push(None);
 
-        match *self {
+        match self {
             GashCommandLine::Background(command_vec) => {
                 // Spawn each as an unscoped thread, let handles drop
                 for gash_command in command_vec.iter() {
@@ -95,7 +94,8 @@ impl<'a> GashCommandLine<'a> {
                     // Get channel handles
                     let tx = sender_stack.pop().unwrap();
                     let rx = receiver_stack.pop().unwrap();
-                    handles.push( gash_command.run(tx, rx) );
+                    let handle = gash_command.run(tx,rx);
+                    handles.push( handle );
                 }
             }
             // Other matches covered in previous case
@@ -184,9 +184,9 @@ impl<'a> GashCommand<'a> {
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
-    fn run(&self, thread_tx : Option<mpsc::Sender<String>>,
+    fn run(self, thread_tx : Option<mpsc::Sender<String>>,
         thread_rx : Option<mpsc::Receiver<String>>) -> thread::JoinHandle {
-        match *self {
+        match self {
             // Standard form, make process and helper threads to connect pipes and channels
             GashCommand::Normal(gash_operation) => { GashCommand::start_piped_process(thread_tx,
                 thread_rx, gash_operation) }
