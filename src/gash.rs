@@ -18,6 +18,8 @@ pub enum GashCommandLine<'a> {
     Empty,
     /// Unsupported command (like && or ||)
     UnsupportedCommand(& 'a str),
+    /// Invalid command (one that does not exist)
+    InvalidCommand(& 'a str),
     /// Exit is a command which starts with 'exit'
     Exit
 }
@@ -47,6 +49,7 @@ impl<'a> GashCommandLine<'a> {
 
                     let mut gash_command_vec =
                         GashCommandLine::create_gash_commands(input_line, history);
+                    //if gash_command_vec.contains(
                     return GashCommandLine::Foreground(gash_command_vec);
                 }
             }
@@ -163,7 +166,7 @@ impl<'a> GashCommand<'a> {
                     let operator = tokens.next().unwrap();
                     GashCommand::OutputRedirect( 
                         GashOperation::new(Box::new(operator),Box::new(tokens.collect())),
-                        Box::new(command.next().unwrap()) )
+                        Box::new(command.next().unwrap().trim()) )
                 }
 
             // Input redirect, same as above
@@ -172,7 +175,7 @@ impl<'a> GashCommand<'a> {
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                 GashCommand::InputRedirect(
-                    GashOperation::new(Box::new(operator),Box::new(tokens.collect())), Box::new(command.next().unwrap()))
+                    GashOperation::new(Box::new(operator),Box::new(tokens.collect())), Box::new(command.next().unwrap().trim()))
             }
 
             // Otherwise, this is just a normal command
