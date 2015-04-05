@@ -1,9 +1,10 @@
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{JoinHandle, spawn};
-use std::error::Error;
+use std::error;
+use std::str;
 
 
 fn main() {
@@ -15,7 +16,7 @@ fn main() {
     let mut file = match File::open(&path) {
         // The `desc` field of `IoError` is a string that describes the error
         Err(why) => panic!("couldn't open {}: {}", display,
-                           Error::description(&why)),
+                           error::Error::description(&why)),
                            Ok(file) => file,
     };
 
@@ -23,29 +24,51 @@ fn main() {
     let mut s = String::new();
     match file.read_to_string(&mut s) {
         Err(why) => panic!("couldn't read {}: {}", display,
-                           Error::description(&why)),
+                           error::Error::description(&why)),
                            Ok(_) => print!("{} contains:\n{}", display, s),
     }
 
     // `file` goes out of scope, and the "hello.txt" file gets closed
 }
 
-fn create_thread_io(channel : Sender<String>, file_name: Box<String>) -> Result<JoinHandle, &'static str>{
-    let mut result = String::new();
-    let t = spawn(move || {
-        let path = Path::new(file_name.as_slice());
-        let mut file = match File::open(&path) {
-            Err(why) => Err("bad time reading file"),
-            Ok(file) => Ok(file),
-        };
-        match file {
-            Err(why) => "shit",
-            Ok(f)   =>  f.read_to_string(&mut result),
-        };
-    });
-    match channel.send(result) {
-        Err(why) => Err("failed to send to channel"),
-        Ok(_)   => Ok(t),
+fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
+    -> Result<JoinHandle, io::Error>{
+    let path = Path::new(file_name.as_slice());
+    let file = match File::open(&path) {
+        Err(why) => return Err(why),
+        Ok(f) => f,
     };
+    Ok( spawn(move || {
+        let f_iter = FileIter{file: file};
+        for buffer_amt in f_iter {
+            channel.send(buffer_amt).unwrap();
+        }
+    }) )
 
+
+}
+
+struct FileIter {
+    file: File,
+}
+
+impl<'a> Iterator for FileIter {
+    type Item = String;
+
+    fn next(& mut self) -> Option<String> {
+        let mut buffer_array : [u8; 80] = [0; 80];
+        let buffer = &mut buffer_array;
+        
+        let output_str = match self.file.read(buffer) {
+            Ok(length) => if length == 0 { return None }
+                            else { str::from_utf8(&buffer[0..length]) },
+            Err(_)   => { return None },
+        };
+
+        match output_str {
+            Ok(string) => Some(string.to_string()),
+            Err(_) => panic!("failed to convert stdin to String"),
+        }
+
+    }
 }
