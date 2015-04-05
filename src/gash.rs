@@ -193,7 +193,7 @@ impl<'a> GashCommand<'a> {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
             GashCommand::Normal(gash_operation) => { GashCommand::start_piped_process(thread_tx,
-                thread_rx, gash_operation) }
+                thread_rx, &gash_operation) }
 
             // No process--use thread to read history
             GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
@@ -201,18 +201,7 @@ impl<'a> GashCommand<'a> {
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
             GashCommand::ChangeDirectory( file_name ) => {
-                match (thread_tx, thread_rx) {
-                    // If both none, actually change the directory
-                    (None, None) => { thread::spawn(move || {
-                       match *file_name { 
-                            "" => {
-                                os::change_dir(&os::homedir().unwrap()); }
-                            path => { 
-                                os::change_dir(&Path::new(path)).unwrap(); }
-                        };
-                    }) }
-                    _ => { thread::spawn(move || {} ) } // Do nothing
-                }
+                panic!("Whoops, forgot to implement history!")
             }
 
             // Similar to Normal, but add another thread to read from file and feed into thread
@@ -230,7 +219,7 @@ impl<'a> GashCommand<'a> {
                 });
 
                 // Now start command like normal with new channel to read from
-                GashCommand::start_piped_process(thread_tx, Some(file_receiver), gash_operation)
+                GashCommand::start_piped_process(thread_tx, Some(file_receiver), &gash_operation)
 
             }
 
@@ -242,8 +231,7 @@ impl<'a> GashCommand<'a> {
 
                 // Start command like normal with new channel to write to,
                 // grabbing handle to return
-                let handle = GashCommand::start_piped_process(Some(file_sender), thread_rx, 
-                    gash_operation);
+                let handle = GashCommand::start_piped_process(Some(file_sender), thread_rx, &gash_operation);
 
                 // Thread to write to file, reading from newly created channel
                 thread::spawn(move || {
@@ -265,13 +253,17 @@ impl<'a> GashCommand<'a> {
     // Starts process from GashOperation data, connects process' pipes to channels via threads,
     // and returns handle to overall thread for joining or dropping
     fn start_piped_process<'b>(tx_channel : Option<mpsc::Sender<String>>,
-        rx_channel : Option<mpsc::Receiver<String>>, gash_operation : GashOperation)
+        rx_channel : Option<mpsc::Receiver<String>>, gash_operation : & 'a GashOperation)
         -> thread::JoinHandle {
-
+ 
         thread::spawn( move || {
-            // Spawn command as a process
+            
             let process_handle = gash_operation.run_cmd().unwrap();
 
+            // Spawn command as a process
+           // let x = GashOperation{operator:gash_operation.operator.clone(),
+         //  operands:gash_operation.operands.clone()};
+           
             // Spawn helper threads
             let in_helper = match rx_channel {
                 Some(receiver) => {// Spawn a thread to handle in pipe
