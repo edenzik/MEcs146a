@@ -18,7 +18,7 @@ enum GashCommandLine<'a> {
     /// Empty command is an empty line
     Empty,
     /// Unsupported command (like && or ||)
-    UnsupportedCommand,
+    UnsupportedCommand(& 'a str),
     /// Exit is a command which starts with 'exit'
     Exit
 }
@@ -35,7 +35,7 @@ impl<'a> GashCommandLine<'a> {
             GashCommandLine::Exit
         } else if input_line.contains("||") || input_line.contains("&&"){
             // Multiple commands per line are not supported
-            GashCommandLine::UnsupportedCommand
+            GashCommandLine::UnsupportedCommand("we dont support || or &&.")
         } else {
             match input_line.chars().last().unwrap(){
                 '&' => {
@@ -188,7 +188,7 @@ impl<'a> GashCommand<'a> {
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
-    fn run(& 'a self, thread_tx : Option<mpsc::Sender<String>>,
+    fn run(&self, thread_tx : Option<mpsc::Sender<String>>,
         thread_rx : Option<mpsc::Receiver<String>>) -> thread::JoinHandle {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels

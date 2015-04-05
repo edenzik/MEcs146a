@@ -30,7 +30,7 @@ impl <'a>Shell<'a> {
             };
 
             let gash_command_line = 
-                gash::GashCommandLine::new(command_string, history.clone());
+                gash::GashCommandLine::new(&command_string, history.clone());
 
             // Branch depending on parse of input
             match gash_command_line {
