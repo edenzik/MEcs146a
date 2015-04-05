@@ -3,12 +3,10 @@
 use std::thread;
 use std::{old_io, os};
 use std::str;
-use std::io::error;
-use std::io::Read;
 use std::sync::mpsc;
 use std::process;
-use std::io::Result;
-use std::error::Error;
+use std::io::{error, Read, Write, Result};
+// use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
 /// here as a Vector to GashCommands
@@ -145,7 +143,7 @@ impl<'a> GashCommand<'a> {
                     GashCommand::OutputRedirect( 
                         GashOperation{ operator:Box::new(operator),
                         operands:Box::new(tokens.collect()) },
-                        Box::new(command.next().unwrap()) );
+                        Box::new(command.next().unwrap()) )
                 }
 
             // Input redirect, same as above
@@ -256,7 +254,7 @@ impl<'a> GashCommand<'a> {
 
     // Starts process from GashOperation data, connects process' pipes to channels via threads,
     // and returns handle to overall thread for joining or dropping
-    fn start_piped_process(tx_channel : Option<mpsc::Sender<String>>,
+    fn start_piped_process<'b>(tx_channel : Option<mpsc::Sender<String>>,
         rx_channel : Option<mpsc::Receiver<String>>, gash_operation : GashOperation)
         -> thread::JoinHandle {
 
@@ -287,7 +285,7 @@ impl<'a> GashCommand<'a> {
             };
             let out_helper = match tx_channel {
                 Some(sender) => {// Spawn a thread to pass on out pipe
-                    let stdout = process_handle.stdout;
+                    let stdout = process_handle.stdout.unwrap();
                     thread::scoped(move || {
                         let process_reader = StdOutIter{ out : stdout };
 
@@ -295,18 +293,17 @@ impl<'a> GashCommand<'a> {
                             sender.send(output).unwrap();
                         }
                     })
-                },
+                }
                 None => { // Spawn a thread to print from out pipe
-                    let stdout = process_handle.stdout;
+                    let stdout = process_handle.stdout.unwrap();
                     thread::scoped(move || {
                         let process_reader = StdOutIter{ out : stdout };
 
                         for output in process_reader {
                             print!("{}", output);
                         }
-                    });
-
-                },
+                    })
+                }
             };
 
             // Helper thread handles drop, joining on them.
