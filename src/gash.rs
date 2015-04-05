@@ -98,6 +98,8 @@ impl<'a> GashCommandLine<'a> {
                     handles.push( gash_command.run(tx, rx) );
                 }
             }
+            // Other matches covered in previous case
+            _ => panic!("Error: attempted to start batch of commands--batch not well-formed.")
         }
     }
 }
@@ -116,8 +118,6 @@ enum GashCommand<'a> {
     InputRedirect(GashOperation<'a>, Box<& 'a str>),
     /// Output redirect - see input redirect.
     OutputRedirect(GashOperation<'a>, Box<& 'a str>),
-    /// A command that doesn't exist
-    UnsupportedCommand,
     //A command that is bad
     BadCommand
 }
@@ -139,7 +139,7 @@ impl<'a> GashCommand<'a> {
 
                 "history" => GashCommand::History(history),
 
-                _   if !GashCommand::cmd_exists(operator) => GashCommand::UnsupportedCommand,
+                _   if !GashCommand::cmd_exists(operator) => GashCommand::BadCommand,
 
                 // Output redirect, splits further to get location of directory
                 _   if full_command.contains(">") => {
@@ -180,8 +180,6 @@ impl<'a> GashCommand<'a> {
         process::Command::new("which").arg(cmd_path).stdout(process::Stdio::capture())
             .status().unwrap().success()
     }
-
-
 
     /// running a GashCommand starts a thread and returns a JoinHandle to that thread
     /// accepts Sender and Receiver channels (or None) for piping
