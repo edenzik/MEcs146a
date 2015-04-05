@@ -134,7 +134,7 @@ enum GashCommand<'a> {
     /// Output redirect - see input redirect.
     OutputRedirect(GashOperation, Box<& 'a str>),
     //A command that is bad
-    BadCommand
+    BadCommand(Box<& 'a str>)
 }
 
 
@@ -154,7 +154,7 @@ impl<'a> GashCommand<'a> {
 
                 "history" => GashCommand::History(history),
 
-                _   if !GashCommand::cmd_exists(operator) => GashCommand::BadCommand,
+                _   if !GashCommand::cmd_exists(operator) => GashCommand::BadCommand(Box::new(operator)),
 
                 // Output redirect, splits further to get location of directory
                 _   if full_command.contains(">") => {
@@ -256,7 +256,11 @@ impl<'a> GashCommand<'a> {
                    }
 
                    // GashCommandLine should not allow running a line that has a bad command in it
-                   GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
+                   GashCommand::BadCommand(operator) =>  {
+                       let operator_name = String::from_str(*operator);
+                       return thread::spawn(move||{println!("gash:\t command not found: {}", operator_name)});
+                   }
+                   
                }
            }
 
