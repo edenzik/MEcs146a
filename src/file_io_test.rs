@@ -3,20 +3,45 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::{JoinHandle, spawn};
+use std::error;
 use std::str;
+
+
+fn main() {
+    // Create a path to the desired file
+    let path = Path::new("hello.txt");
+    let display = path.display();
+
+    // Open the path in read-only mode, returns `IoResult<File>`
+    let mut file = match File::open(&path) {
+        // The `desc` field of `IoError` is a string that describes the error
+        Err(why) => panic!("couldn't open {}: {}", display,
+                           error::Error::description(&why)),
+                           Ok(file) => file,
+    };
+
+    // Read the file contents into a string, returns `IoResult<String>`
+    let mut s = String::new();
+    match file.read_to_string(&mut s) {
+        Err(why) => panic!("couldn't read {}: {}", display,
+                           error::Error::description(&why)),
+                           Ok(_) => print!("{} contains:\n{}", display, s),
+    }
+
+    // `file` goes out of scope, and the "hello.txt" file gets closed
+}
 
 // This method to read from file and write to channel
 fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
     -> Result<JoinHandle, io::Error>{
-    // Create and validate file object. Return Error early if failure or spawn thread
+    
     let path = Path::new(file_name.as_slice());
     let file = match File::open(&path) {
         Err(why) => return Err(why),
         Ok(f) => f,
     };
-    // File created successfully, return thread that will be reading from it
     Ok( spawn(move || {
-        let f_iter = FileReadIter::new(file);
+        let f_iter = FileReadIter{file: file};
         for buffer_amt in f_iter {
             channel.send(buffer_amt).unwrap();
         }
@@ -26,13 +51,11 @@ fn create_thread_io(channel : Sender<String>, file_name: Box<String>)
 // This method to read from channel and write to file
 fn create_io_thread(channel : Receiver<String>, file_name: Box<String>)
     -> Result<JoinHandle, io::Error>{
-    // Create and validate file object. Return Error early if failure or spawn thread
     let path = Path::new(file_name.as_slice());
     let mut file = match File::create(&path) {
         Err(why) => return Err(why),
         Ok(f) => f,
     };
-    // File created successfully, return thread that will be writing to it
     Ok( spawn(move || {
         // Write data from channel until channel is closed (Err)
         loop {
@@ -44,7 +67,6 @@ fn create_io_thread(channel : Receiver<String>, file_name: Box<String>)
     }) )
 }
 
-/// FileReadIter for encapsulating reading an entire file 80 bytes at a time
 struct FileReadIter {
     file: File,
 }
@@ -58,8 +80,6 @@ impl FileReadIter {
 impl<'a> Iterator for FileReadIter {
     type Item = String;
 
-    /// each time next is called, 80 bytes are read and returned as Some(String)
-    /// None signals end of file (due to no data read or Err)
     fn next(& mut self) -> Option<String> {
         let mut buffer_array : [u8; 80] = [0; 80];
         let buffer = &mut buffer_array;
