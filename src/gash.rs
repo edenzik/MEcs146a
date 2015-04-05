@@ -61,7 +61,7 @@ impl<'a> GashCommandLine<'a> {
     fn create_gash_commands(input :  & 'a str, history : Vec<String>) -> Vec<GashCommand>{
         let mut gash_command_vec = Vec::new();
         for command_str in input.split('|'){
-                gash_command_vec.push(GashCommand::new(command_str, history.clone()));
+            gash_command_vec.push(GashCommand::new(command_str, history.clone()));
         }
         return gash_command_vec;
     }
@@ -116,16 +116,16 @@ impl<'a> GashCommandLine<'a> {
 enum GashCommand<'a> {
     /// A normal command is a command which can have STDIN, and has STDOUT and STDERR. Just
     /// like input and output redirect, it contains a Gash operation to execute.
-    Normal(GashOperation<'a>),
+    Normal(GashOperation),
     /// A history command is "meta", in that it refers to old commands
     History(Vec<String>),
     /// A cd command changes the wd for the shell, its only content is a string containing the
     /// path of the directory to change to
     ChangeDirectory(Box<& 'a str>),
     /// Input redirect contains a GashOperation and a string, file directory to redirect input to
-    InputRedirect(GashOperation<'a>, Box<& 'a str>),
+    InputRedirect(GashOperation, Box<& 'a str>),
     /// Output redirect - see input redirect.
-    OutputRedirect(GashOperation<'a>, Box<& 'a str>),
+    OutputRedirect(GashOperation, Box<& 'a str>),
     //A command that is bad
     BadCommand
 }
@@ -155,8 +155,7 @@ impl<'a> GashCommand<'a> {
                     let mut tokens = command.next().unwrap().words();
                     let operator = tokens.next().unwrap();
                     GashCommand::OutputRedirect( 
-                        GashOperation{ operator:Box::new(operator),
-                        operands:Box::new(tokens.collect()) },
+                        GashOperation::new(Box::new(operator),Box::new(tokens.collect())),
                         Box::new(command.next().unwrap()) )
                 }
 
@@ -166,15 +165,12 @@ impl<'a> GashCommand<'a> {
                 let mut tokens = command.next().unwrap().words();
                 let operator = tokens.next().unwrap();
                 GashCommand::InputRedirect(
-                    GashOperation{ operator:Box::new(operator),
-                    operands:Box::new(tokens.collect()) },
-                    Box::new(command.next().unwrap()) )
+                    GashOperation::new(Box::new(operator),Box::new(tokens.collect())), Box::new(command.next().unwrap()))
             }
 
             // Otherwise, this is just a normal command
             _   =>  GashCommand::Normal(
-                GashOperation{ operator:Box::new(operator),
-                operands:Box::new(full_command_words.collect()) } ),
+                GashOperation::new(Box::new(operator), Box::new(full_command_words.collect()))),
         }
         /* This should go inside the match as part of the valid check
 
@@ -193,182 +189,183 @@ impl<'a> GashCommand<'a> {
     /// accepts Sender and Receiver channels (or None) for piping
     /// matches on variant of GashCommand to determine thread's internal behavior
     fn run(self, thread_tx : Option<mpsc::Sender<String>>,
-        thread_rx : Option<mpsc::Receiver<String>>) -> thread::JoinHandle {
-        match self {
-            // Standard form, make process and helper threads to connect pipes and channels
-            GashCommand::Normal(gash_operation) => { GashCommand::start_piped_process(thread_tx,
-                thread_rx, gash_operation) }
+           thread_rx : Option<mpsc::Receiver<String>>) -> thread::JoinHandle {
+               match self {
+                   // Standard form, make process and helper threads to connect pipes and channels
+                   GashCommand::Normal(gash_operation) => { GashCommand::start_piped_process(thread_tx,
+                                                                                                        thread_rx, gash_operation) }
 
-            // No process--use thread to read history
-            GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
+                   // No process--use thread to read history
+                   GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
 
-            // If tx and rx are None, change system directory. Else do nothing.
-            // This is the observed behavior from testing on Ubuntu 14.04
-            GashCommand::ChangeDirectory( file_name ) => {
-                panic!("Whoops, forgot to implement change directory!")
-            }
+                   // If tx and rx are None, change system directory. Else do nothing.
+                   // This is the observed behavior from testing on Ubuntu 14.04
+                   GashCommand::ChangeDirectory( file_name ) => {
+                       panic!("Whoops, forgot to implement change directory!")
+                   }
 
-            // Similar to Normal, but add another thread to read from file and feed into thread
-            GashCommand::InputRedirect( gash_operation, file_name ) => { 
-                // Don't need input channel
-                drop(thread_rx);
-                let (file_sender, file_receiver) = mpsc::channel::<String>();
+                   // Similar to Normal, but add another thread to read from file and feed into thread
+                   GashCommand::InputRedirect( gash_operation, file_name ) => { 
+                       // Don't need input channel
+                       drop(thread_rx);
+                       let (file_sender, file_receiver) = mpsc::channel::<String>();
 
-                // Thread to read from file and write into newly created channel
-                GashCommand::create_io_reader(file_sender, file_name);
+                       // Thread to read from file and write into newly created channel
+                       GashCommand::create_io_reader(file_sender, file_name);
 
-                // Now start command like normal with new channel to read from
-                GashCommand::start_piped_process(thread_tx, Some(file_receiver), gash_operation)
+                       // Now start command like normal with new channel to read from
+                       GashCommand::start_piped_process(thread_tx, Some(file_receiver), gash_operation)
 
-            }
+                   }
 
-            // Similar to Normal, add another thread to read from thread and write into file
-            GashCommand::OutputRedirect( gash_operation, file_name ) => { 
-                // Don't need output channel
-                drop(thread_tx);
-                let (file_sender, file_receiver) = mpsc::channel::<String>();
+                   // Similar to Normal, add another thread to read from thread and write into file
+                   GashCommand::OutputRedirect( gash_operation, file_name ) => { 
+                       // Don't need output channel
+                       drop(thread_tx);
+                       let (file_sender, file_receiver) = mpsc::channel::<String>();
 
-                // Start command like normal with new channel to write to,
-                // grabbing handle to return
-                let handle = GashCommand::start_piped_process(Some(file_sender), 
-                    thread_rx, gash_operation);
+                       // Start command like normal with new channel to write to,
+                       // grabbing handle to return
+                       let handle = GashCommand::start_piped_process(Some(file_sender), 
+                                                                                                        thread_rx, gash_operation);
 
-                // Thread to write to file, reading from newly created channel
-                GashCommand::create_io_writer(file_receiver, file_name);
+                       // Thread to write to file, reading from newly created channel
+                       GashCommand::create_io_writer(file_receiver, file_name);
 
-                handle
+                       handle
 
-            }
+                   }
 
-            // GashCommandLine should not allow running a line that has a bad command in it
-            GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
-        }
-    }
+                   // GashCommandLine should not allow running a line that has a bad command in it
+                   GashCommand::BadCommand => { panic!("ERROR: Attempted to run BadCommand") }
+               }
+           }
 
     // Starts process from GashOperation data, connects process' pipes to channels via threads,
     // and returns handle to overall thread for joining or dropping
     fn start_piped_process<'b>(tx_channel : Option<mpsc::Sender<String>>,
-        rx_channel : Option<mpsc::Receiver<String>>, gash_op : GashOperation)
+                               rx_channel : Option<mpsc::Receiver<String>>, gash_op : GashOperation)
         -> thread::JoinHandle {
 
-        let mut args_vec = Vec::new();
-        for arg in (*gash_op.operands).iter().rev() {
-            args_vec.push(arg.to_string().as_slice());
-        }
 
-        let gash_operation = GashOperation { 
-            operator: Box::new( gash_op.operator.to_string().as_slice() ),
-            operands: Box::new( args_vec )
-        };
 
- 
-        thread::spawn( move || {
-            // Spawn command as a process
-            let process_handle = gash_operation.run_cmd().unwrap();
-                      
-            // Spawn helper threads
-            let in_helper = match rx_channel {
-                Some(receiver) => {// Spawn a thread to handle in pipe
-                    let mut stdin = process_handle.stdin.unwrap();
-                    Some( thread::scoped(move || {
-                        // Feed process from input channel until channel closes
-                        loop {
-                            let write_result = match receiver.recv() {
-                                Ok(msg) => stdin.write_all(msg.as_bytes()),
-                                Err(_) => { break }
-                            };
-                            match write_result {
-                                Ok(_) => { continue; }
-                                Err(_) => { println!("Error: Failed writing to channel");
-                                    break; }
+
+            thread::spawn( move || {
+                // Spawn command as a process
+                let process_handle = gash_op.run_cmd().unwrap();
+
+                // Spawn helper threads
+                let in_helper = match rx_channel {
+                    Some(receiver) => {// Spawn a thread to handle in pipe
+                        let mut stdin = process_handle.stdin.unwrap();
+                        Some( thread::scoped(move || {
+                            // Feed process from input channel until channel closes
+                            loop {
+                                let write_result = match receiver.recv() {
+                                    Ok(msg) => stdin.write_all(msg.as_bytes()),
+                                    Err(_) => { break }
+                                };
+                                match write_result {
+                                    Ok(_) => { continue; }
+                                    Err(_) => { println!("Error: Failed writing to channel");
+                                        break; }
+                                }
                             }
-                        }
-                    }) )
-                }
-                None => { let a = process_handle.stdin; None } // No in-pipe, just drop handle
-            };
-            let out_helper = match tx_channel {
-                Some(sender) => {// Spawn a thread to pass on out pipe
-                    let stdout = process_handle.stdout.unwrap();
-                    thread::scoped(move || {
-                        let process_reader = StdOutIter{ out : stdout };
+                        }) )
+                    }
+                    None => { let a = process_handle.stdin; None } // No in-pipe, just drop handle
+                };
+                let out_helper = match tx_channel {
+                    Some(sender) => {// Spawn a thread to pass on out pipe
+                        let stdout = process_handle.stdout.unwrap();
+                        thread::scoped(move || {
+                            let process_reader = StdOutIter{ out : stdout };
 
-                        for output in process_reader {
-                            sender.send(output).unwrap();
-                        }
-                    })
-                }
-                None => { // Spawn a thread to print from out pipe
-                    let stdout = process_handle.stdout.unwrap();
-                    thread::scoped(move || {
-                        let process_reader = StdOutIter{ out : stdout };
+                            for output in process_reader {
+                                sender.send(output).unwrap();
+                            }
+                        })
+                    }
+                    None => { // Spawn a thread to print from out pipe
+                        let stdout = process_handle.stdout.unwrap();
+                        thread::scoped(move || {
+                            let process_reader = StdOutIter{ out : stdout };
 
-                        for output in process_reader {
-                            print!("{}", output);
-                        }
-                    })
-                }
-            };
+                            for output in process_reader {
+                                print!("{}", output);
+                            }
+                        })
+                    }
+                };
 
-            // Helper thread handles drop, joining on them.
+                // Helper thread handles drop, joining on them.
 
-        })
-    }   // End of start_piped_process
+            })
+        }   // End of start_piped_process
 
     // This method to read from file and write to channel
     fn create_io_reader(channel : Sender<String>, file_name: Box<&str>)
         -> Result<JoinHandle>{
-        // Create and validate file object. Return Error early if failure or spawn thread
-        let path = Path::new(file_name.as_slice());
-        let file = match File::open(&path) {
-            Err(why) => return Err(why),
-            Ok(f) => f,
-        };
-        // File created successfully, return thread that will be reading from it
-        Ok( thread::spawn(move || {
-            let f_iter = FileReadIter::new(file);
-            for buffer_amt in f_iter {
-                channel.send(buffer_amt).unwrap();
-            }
-        }) )
-    }
+            // Create and validate file object. Return Error early if failure or spawn thread
+            let path = Path::new(file_name.as_slice());
+            let file = match File::open(&path) {
+                Err(why) => return Err(why),
+                Ok(f) => f,
+            };
+            // File created successfully, return thread that will be reading from it
+            Ok( thread::spawn(move || {
+                let f_iter = FileReadIter::new(file);
+                for buffer_amt in f_iter {
+                    channel.send(buffer_amt).unwrap();
+                }
+            }) )
+        }
 
     // This method to read from channel and write to file
     fn create_io_writer(channel : Receiver<String>, file_name: Box<&str>)
         -> Result<JoinHandle>{
-        // Create and validate file object. Return Error early if failure or spawn thread
-        let path = Path::new(file_name.as_slice());
-        let mut file = match File::create(&path) {
-            Err(why) => return Err(why),
-            Ok(f) => f,
-        };
-        // File created successfully, return thread that will be writing to it
-        Ok( thread::spawn(move || {
-            // Write data from channel until channel is closed (Err)
-            loop {
-                match channel.recv() {
-                    Ok(msg) => { file.write_all(msg.as_bytes()).unwrap(); }
-                    Err(_) => { break; }    // Channel closed
+            // Create and validate file object. Return Error early if failure or spawn thread
+            let path = Path::new(file_name.as_slice());
+            let mut file = match File::create(&path) {
+                Err(why) => return Err(why),
+                Ok(f) => f,
+            };
+            // File created successfully, return thread that will be writing to it
+            Ok( thread::spawn(move || {
+                // Write data from channel until channel is closed (Err)
+                loop {
+                    match channel.recv() {
+                        Ok(msg) => { file.write_all(msg.as_bytes()).unwrap(); }
+                        Err(_) => { break; }    // Channel closed
+                    }
                 }
-            }
-        }) )
-    }
+            }) )
+        }
 
 }   // End of impl GashCommand
 
 
 /// A GashOperation is the basic unit of an operation, contains an operator ("echo") 
 /// and a vector of operands (arguments to operator).
-struct GashOperation<'a> {
-    operator : Box<& 'a str>,
-    operands: Box<Vec<& 'a str>>
+struct GashOperation {
+    operator : Box<String>,
+    operands: Box<Vec<String>>
 }
 
-impl<'a> GashOperation<'a> {
+impl GashOperation {
+
+    fn new(operator : Box<& str>, operands : Box<Vec<& str>>) -> GashOperation {
+        let operator = String::from_str(*operator);
+        let mut operands_string = Vec::new();
+        for op in operands.iter(){
+            operands_string.push(String::from_str(op));
+        }
+        GashOperation{operator:Box::new(operator),operands:Box::new(operands_string)}
+    }
     // Runs command with args
     // Returns handle to the Command after spawning it
     fn run_cmd(&self) -> Result<process::Child> { 
-        process::Command::new(*self.operator).args(&*self.operands.as_slice())
+        process::Command::new((*self.operator).as_slice()).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
             .stderr(process::Stdio::capture()).spawn()
     }
@@ -387,7 +384,7 @@ impl<'a> Iterator for StdOutIter {
     fn next(& mut self) -> Option<String> {
         let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
         let buffer = &mut buffer_array;
-        
+
         let output_str = match self.out.read(buffer) {
             Ok(length) => if length == 0 { return None }
             else { str::from_utf8(&buffer[0..length]) },
@@ -421,10 +418,10 @@ impl<'a> Iterator for FileReadIter {
     fn next(& mut self) -> Option<String> {
         let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
         let buffer = &mut buffer_array;
-        
+
         let output_str = match self.file.read(buffer) {
             Ok(length) => if length == 0 { return None }
-                            else { str::from_utf8(&buffer[0..length]) },
+            else { str::from_utf8(&buffer[0..length]) },
             Err(_)   => { return None },
         };
 
