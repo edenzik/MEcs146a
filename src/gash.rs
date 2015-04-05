@@ -193,7 +193,7 @@ impl<'a> GashCommand<'a> {
         match *self {
             // Standard form, make process and helper threads to connect pipes and channels
             GashCommand::Normal(gash_operation) => { GashCommand::start_piped_process(thread_tx,
-                thread_rx, &gash_operation) }
+                thread_rx, gash_operation) }
 
             // No process--use thread to read history
             GashCommand::History(_) => { panic!("Whoops, forgot to implement history!") }
@@ -219,7 +219,7 @@ impl<'a> GashCommand<'a> {
                 });
 
                 // Now start command like normal with new channel to read from
-                GashCommand::start_piped_process(thread_tx, Some(file_receiver), &gash_operation)
+                GashCommand::start_piped_process(thread_tx, Some(file_receiver), gash_operation)
 
             }
 
@@ -231,7 +231,7 @@ impl<'a> GashCommand<'a> {
 
                 // Start command like normal with new channel to write to,
                 // grabbing handle to return
-                let handle = GashCommand::start_piped_process(Some(file_sender), thread_rx, &gash_operation);
+                let handle = GashCommand::start_piped_process(Some(file_sender), thread_rx, gash_operation);
 
                 // Thread to write to file, reading from newly created channel
                 thread::spawn(move || {
@@ -253,13 +253,16 @@ impl<'a> GashCommand<'a> {
     // Starts process from GashOperation data, connects process' pipes to channels via threads,
     // and returns handle to overall thread for joining or dropping
     fn start_piped_process<'b>(tx_channel : Option<mpsc::Sender<String>>,
-        rx_channel : Option<mpsc::Receiver<String>>, gash_operation : & 'a GashOperation)
+        rx_channel : Option<mpsc::Receiver<String>>, gash_operation : GashOperation)
         -> thread::JoinHandle {
+
+          // let process = &mut gash_operation;
+
  
         thread::spawn( move || {
             
             let process_handle = gash_operation.run_cmd().unwrap();
-
+            
             // Spawn command as a process
            // let x = GashOperation{operator:gash_operation.operator.clone(),
          //  operands:gash_operation.operands.clone()};
