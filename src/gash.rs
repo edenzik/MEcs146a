@@ -80,22 +80,27 @@ impl<'a> GashCommandLine<'a> {
         match self {
             GashCommandLine::Background(command_vec) => {
                 // Spawn each as an unscoped thread, let handles drop
-                for gash_command in command_vec.iter() {
+                for gash_command in command_vec.into_iter() {
                     // Get channel handles
                     let tx = sender_stack.pop().unwrap();
                     let rx = receiver_stack.pop().unwrap();
                     gash_command.run(tx, rx);
                 }
+                // Let handles drop (detach) and allow command to run in background
             }
             GashCommandLine::Foreground(command_vec) => {
                 // Spawn each as a scoped thread. Drop handles.
                 let mut handles = Vec::new();
-                for gash_command in command_vec.iter() {
+                for gash_command in command_vec.into_iter() {
                     // Get channel handles
                     let tx = sender_stack.pop().unwrap();
                     let rx = receiver_stack.pop().unwrap();
                     let handle = gash_command.run(tx,rx);
                     handles.push( handle );
+                }
+                // Join on all handles to force command to run in foreground
+                for handle in handles.into_iter() {
+                    handle.join();
                 }
             }
             // Other matches covered in previous case
