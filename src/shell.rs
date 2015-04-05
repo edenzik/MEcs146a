@@ -1,16 +1,5 @@
-// extern crate getopts;
-
-// use std::thread;
-// use getopts::{optopt, getopts};
-use std::old_io::BufferedReader;
 use std::old_io;
-// use std::os;
-use std::str;
-// use std::sync::mpsc;
-// use std::sync::mpsc::{channel};
-// use std::error::Error;
-// use std::io::prelude::*;
-// use std::process::{Command, Stdio};
+
 mod gash;
 
 struct Shell<'a> {
@@ -24,7 +13,7 @@ impl <'a>Shell<'a> {
 
     // Begins the REPL loop
     fn run(&self) {
-        let mut stdin = BufferedReader::new(old_io::stdin());
+        let mut stdin = old_io::BufferedReader::new(old_io::stdin());
         let mut history: Vec<String> = Vec::new();
 
         // Main REPL loop, may spawn background jobs to finish
