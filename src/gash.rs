@@ -203,14 +203,14 @@ impl<'a> GashCommand<'a> {
                    GashCommand::ChangeDirectory( file_name ) => {
                        match (thread_tx, thread_rx) {
                            // If both none, actually change the directory
-                           (None, None) => { thread::spawn(move || {
+                           (None, None) => { 
                                match *file_name { 
                                    "" => {
                                        os::change_dir(&os::homedir().unwrap()); }
                                    path => { 
                                        os::change_dir(&Path::new(path)).unwrap(); }
                                };
-                           }) }
+                           thread::spawn(move || { }) }
                            _ => { thread::spawn(move || {} ) } // Do nothing
                        }
 
