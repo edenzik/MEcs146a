@@ -129,13 +129,13 @@ impl<'a> GashCommandLine<'a> {
                 // Join on all handles to force command to run in foreground
                 for handle in handles.into_iter() {
                     match handle.join() {
-                        Err(_) => println!("Error: Child thread panicked."),
+                        Err(_) => println!("Child thread panicked. Attempting to recover."),
                         _ => { }
                     }
                 }
             }
             // Other matches covered in previous case
-            _ => panic!("Error: attempted to start batch of commands--batch not well-formed.")
+            _ => println!("Error: attempted to start batch of commands--batch not well-formed.")
         }
     }   // End of GashCommandLine::run_batch()
 }   // End of implementation for GashCommandLine
@@ -256,15 +256,19 @@ impl<'a> GashCommand<'a> {
                             "" => { 
                                 match env::home_dir() {
                                     Some(dir) => env::set_current_dir(&dir),
-                                    None => panic!("Error: Failed to get home directory.") } }
+                                    None => return thread::spawn(move || {
+                                        panic!("Error: Failed to get home directory.") }) 
+                                }
+                            }
                             path => { env::set_current_dir(&Path::new(path)) }
                         };
                         match cd_status {
-                        Err(_) => { panic!("Error, failed to change directory.") }
-                        Ok(_) => { /* successfully changed dir */ }
+                        Err(_) => { thread::spawn(move || {
+                            panic!("Error, failed to change directory.") }) }
+                        Ok(_) => { thread::spawn(move || {/* successfully changed dir */}) }
                         }
-                        thread::spawn(move || { }) }
-                    _ => { thread::spawn(move || {} ) } // Do nothing
+                    }
+                    _ => { thread::spawn(move || {} ) } // Do nothing when cd is piped together
                 }
             }
 
@@ -277,11 +281,15 @@ impl<'a> GashCommand<'a> {
 
                 // Thread to read from file and write into newly created channel
                 match GashCommand::create_io_reader(file_sender, file_name) {
-                    Ok(_) => { }
-                    Err(msg) => { panic!("Error: Failed to open file. {}", msg) }
+                    Ok(_) => { 
+                        // Now start command like normal with new channel to read from
+                        GashCommand::start_piped_process(thread_tx, Some(file_receiver),
+                    gash_operation) }
+                    Err(msg) => { thread::spawn( move || {
+                        panic!("Error: Failed to open file. {}", msg) }) }
                 }
 
-                // Now start command like normal with new channel to read from
+                
                 GashCommand::start_piped_process(thread_tx, Some(file_receiver),
                     gash_operation)
             }
@@ -292,24 +300,21 @@ impl<'a> GashCommand<'a> {
                 drop(thread_tx);
                 let (file_sender, file_receiver) = mpsc::channel::<String>();
 
-                // Start command like normal with new channel to write to,
-                // grabbing handle to return
-                let handle = GashCommand::start_piped_process(Some(file_sender), 
-                    thread_rx, gash_operation);
-
                 // Thread to write to file, reading from newly created channel
                 match GashCommand::create_io_writer(file_receiver, file_name) {
-                    Ok(_) => { }
-                    Err(msg) => { panic!("Error: Failed to open file. {}", msg) }
+                    Ok(_) => { 
+                        // File opened successfully, start process
+                        GashCommand::start_piped_process(Some(file_sender), 
+                    thread_rx, gash_operation) }
+                    Err(msg) => { thread::spawn( move || { 
+                        panic!("Error: Failed to open file. {}", msg) }) }
                 }
-
-                handle
             }
 
             // GashCommandLine should not allow running a line that has a bad command in it
-            GashCommand::BadCommand(_) =>  panic!("Illegal Operation: Called run() on BadCommand"),
-
-            GashCommand::EmptyCommand => panic!("this should not happen...")
+            GashCommand::BadCommand(_) =>  panic!("Illegal Operation: Called run() on BadCommand."),
+            // GashCommandLine should not allow running a line that has an empty command in it
+            GashCommand::EmptyCommand => panic!("Illegal Operation: Called run() on EmptyCommand.")
         }
     }   // End of GashCommand::run()
 
