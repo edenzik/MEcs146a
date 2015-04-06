@@ -27,6 +27,7 @@ pub enum GashCommandLine<'a> {
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
     pub fn new(input_line : & 'a str, history : Vec<String>) -> GashCommandLine<'a> {
+
         match input_line.words().next() {
             // If the line is empty, this is an empty command
             None => return GashCommandLine::Empty,
@@ -34,11 +35,13 @@ impl<'a> GashCommandLine<'a> {
             Some(s) if s=="exit" => return GashCommandLine::Exit,
             Some(_) => {}
         }
-                        
+
         if input_line.contains("||") || input_line.contains("&&"){
             // Multiple commands per line are not supported
-            GashCommandLine::UnsupportedCommand("we dont support || or &&.");
+            return GashCommandLine::UnsupportedCommand("we dont support || or &&.");
         }
+
+                        
         match input_line.chars().last(){
             None => return GashCommandLine::Empty,
             Some(s) if s=='&' => {
