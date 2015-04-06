@@ -46,10 +46,12 @@ impl <'a>Shell<'a> {
                 gash::GashCommandLine::Exit => { break; }      // End REPL loop
                 
                 // Invalid input
-                gash::GashCommandLine::UnsupportedCommand(msg) => { println!("{}", msg); continue; }
+                gash::GashCommandLine::UnsupportedCommand(msg) => { 
+                    println!("{}", msg); continue; }
 
                 // Invalid command
-                gash::GashCommandLine::InvalidCommand(msg) => { println!("gash: command not found: {}", msg); continue; }
+                gash::GashCommandLine::InvalidCommand(msg) => { 
+                    println!("gash: command not found: {}", msg); continue; }
 
 
                 // Else, run this well-formed batch of commands
