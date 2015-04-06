@@ -244,7 +244,7 @@ impl<'a> GashCommand<'a> {
                     // Exit channel exists, write to it
                     Some(sender_handle) => { thread::spawn( move || {
                         for history_line in history.into_iter() {
-                            match sender_handle.send(history_line) {
+                            match sender_handle.send( format!("{}\n", history_line) ) {
                                 Ok(_) => {}
                                 Err(msg) => { panic!("Failed to pipe history: {}", msg) }
                             }
@@ -273,7 +273,7 @@ impl<'a> GashCommand<'a> {
                         // File opened successfully, pass it history
                         thread::spawn( move || {
                             for history_line in history.into_iter() {
-                                match file_sender.send(history_line) {
+                                match file_sender.send( format!("{}\n", history_line) ) {
                                     Ok(_) => {}
                                     Err(msg) => { panic!("Failed to pipe history: {}", msg) }
                                 }
