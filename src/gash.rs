@@ -288,10 +288,6 @@ impl<'a> GashCommand<'a> {
                     Err(msg) => { thread::spawn( move || {
                         panic!("Error: Failed to open file. {}", msg) }) }
                 }
-
-                
-                GashCommand::start_piped_process(thread_tx, Some(file_receiver),
-                    gash_operation)
             }
 
             // Similar to Normal, add another thread to read from thread and write into file
