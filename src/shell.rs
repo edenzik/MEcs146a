@@ -80,7 +80,7 @@ fn main() {
 }
 
 #[test]
-fn valid_unix_command() {
+fn valid_gash_command() {
     let input = "echo hello";
     assert!(match gash::GashCommandLine::new(input,Vec::new()){
         gash::GashCommandLine::Foreground(_) => true,
@@ -89,13 +89,83 @@ fn valid_unix_command() {
 }
 
 #[test]
-fn invalid_unix_command() {
+fn invalid_gash_command() {
     let input = "echoa hello";
     assert!(match gash::GashCommandLine::new(input,Vec::new()){
-        gash::GashCommandLine::Foreground(_) => true,
+        gash::GashCommandLine::InvalidCommand(_) => true,
         _   => false
     });
 }
+
+#[test]
+fn valid_gash_command_background() {
+    let input = "echo hello &";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::Background(_) => true,
+        _   => false
+    });
+}
+
+#[test]
+fn invalid_gash_command_background() {
+    let input = "echoa hello &";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::InvalidCommand(_) => true,
+        _   => false
+    });
+}
+
+#[test]
+fn empty_command() {
+    let input = "";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::Empty => true,
+        _   => false
+    });
+}
+
+#[test]
+fn single_bad_character_invalid_command() {
+    let input = "&";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::InvalidCommand => true,
+        _   => false
+    });
+}
+
+#[test]
+fn exit_command() {
+    let input = "exit";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::Exit => true,
+        _   => false
+    });
+}
+
+#[test]
+fn unsupported_command_or() {
+    let input = "echo hello || grep hello";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::UnsupportedCommand(_) => true,
+        _   => false
+    });
+}
+
+#[test]
+fn unsupported_command_and() {
+    let input = "echo hello && echo goodbye";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::UnsupportedCommand(_) => true,
+        _   => false
+    });
+}
+
+
+
+
+
+
+
 
 
 
