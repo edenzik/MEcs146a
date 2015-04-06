@@ -27,18 +27,21 @@ pub enum GashCommandLine<'a> {
 impl<'a> GashCommandLine<'a> {
     /// Constructor for a GashCommandLine
     pub fn new(input_line : & 'a str, history : Vec<String>) -> GashCommandLine<'a> {
-        if input_line.is_empty() {
+        match input_line.words().next() {
             // If the line is empty, this is an empty command
-            GashCommandLine::Empty
-        } else if input_line.words().next().unwrap() == "exit" {
-            // If the first word is exit, this is an exit command
-            GashCommandLine::Exit
-        } else if input_line.contains("||") || input_line.contains("&&"){
+            None => return GashCommandLine::Empty,
+            // If the command stars with exit, then return an exit command
+            Some(s) if s=="exit" => return GashCommandLine::Exit,
+            Some(_) => {}
+        }
+                        
+        if input_line.contains("||") || input_line.contains("&&"){
             // Multiple commands per line are not supported
-            GashCommandLine::UnsupportedCommand("we dont support || or &&.")
-        } else {
-            match input_line.chars().last().unwrap(){
-                '&' => {
+            GashCommandLine::UnsupportedCommand("we dont support || or &&.");
+        }
+        match input_line.chars().last(){
+            None => return GashCommandLine::Empty,
+            Some(s) if s=='&' => {
                     // Last character &, create background batch
                     let removed_tip = input_line.slice_chars(0,input_line.len()-1);
                     let gash_command_vec = 
@@ -48,7 +51,7 @@ impl<'a> GashCommandLine<'a> {
                         Ok(vec) => GashCommandLine::Background(vec)
                     }
                 },
-                _   => {
+            Some(_)   => {
                     // Last character not &, create foreground batch
                     let gash_command_vec =
                         GashCommandLine::create_gash_commands(input_line, history);
@@ -57,7 +60,6 @@ impl<'a> GashCommandLine<'a> {
                         Ok(vec) => GashCommandLine::Foreground(vec)
                     }
                 }
-            }
         }
     }   // End of GashCommandLine::new() 
 
@@ -151,8 +153,10 @@ enum GashCommand<'a> {
     InputRedirect(GashOperation, Box<& 'a str>),
     /// Output redirect - see input redirect.
     OutputRedirect(GashOperation, Box<& 'a str>),
-    //A command that is not found on the underlying system (contains name of that command)
-    BadCommand(Box<& 'a str>)
+    // A command that is not found on the underlying system (contains name of that command)
+    BadCommand(Box<& 'a str>),
+    /// A command that is empty, should never be evaluated.
+    EmptyCommand
 }
 
 /// A gash command implementation
@@ -163,41 +167,45 @@ impl<'a> GashCommand<'a> {
         // Separates command into tokens on white space
         let mut full_command_words = full_command.words();
         // Operator - first token
-        let operator = full_command_words.next().unwrap();
+        //let operator = full_command_words.next().unwrap();
 
         // Matches on operator, dispatches GashCommand
-        match operator {
-            "cd" => GashCommand::ChangeDirectory(
-                Box::new( full_command_words.next().unwrap() ) ),
+        match full_command_words.next() {
+            Some(op) if op=="cd" => {
+                match full_command_words.next(){
+                    Some(dir) => GashCommand::ChangeDirectory(Box::new(dir)),
+                    None => GashCommand::ChangeDirectory(Box::new(""))
+                }
+            },
+            Some(op) if op=="history" => GashCommand::History(history),
 
-            "history" => GashCommand::History(history),
-
-            _   if !GashCommand::cmd_exists(operator) => 
-                GashCommand::BadCommand(Box::new(operator)),
+            Some(op)   if !GashCommand::cmd_exists(op) => 
+                GashCommand::BadCommand(Box::new(op)),
 
             // Output redirect, splits further to get location of directory
-            _   if full_command.contains(">") => {
+            Some(op)   if full_command.contains(">") => {
                 let mut command = full_command.split_str(">");
                 let mut tokens = command.next().unwrap().words();
-                let operator = tokens.next().unwrap();
+                tokens.next();
                 GashCommand::OutputRedirect( 
-                    GashOperation::new( Box::new(operator), Box::new(tokens.collect())),
+                    GashOperation::new( Box::new(op), Box::new(tokens.collect())),
                     Box::new(command.next().unwrap().trim()) )
             }
 
             // Input redirect, same as above
-            _   if full_command.contains("<") => {
+            Some(op)   if full_command.contains("<") => {
                 let mut command = full_command.split_str("<");
                 let mut tokens = command.next().unwrap().words();
-                let operator = tokens.next().unwrap();
+                tokens.next();
                 GashCommand::InputRedirect(
-                    GashOperation::new( Box::new(operator), Box::new(tokens.collect())),
+                    GashOperation::new( Box::new(op), Box::new(tokens.collect())),
                     Box::new(command.next().unwrap().trim()) )
             }
 
             // Otherwise, this is just a normal command
-            _   =>  GashCommand::Normal(
-                GashOperation::new(Box::new(operator), Box::new(full_command_words.collect()))),
+            Some(op)   =>  GashCommand::Normal(
+                GashOperation::new(Box::new(op), Box::new(full_command_words.collect()))),
+            None => GashCommand::EmptyCommand
         }
     }   // End of new() for GashCommand
 
@@ -298,9 +306,9 @@ impl<'a> GashCommand<'a> {
             }
 
             // GashCommandLine should not allow running a line that has a bad command in it
-            GashCommand::BadCommand(_) =>  {
-                panic!("Illegal Operation: Called run() on BadCommand");
-            }   
+            GashCommand::BadCommand(_) =>  panic!("Illegal Operation: Called run() on BadCommand"),
+
+            GashCommand::EmptyCommand => panic!("this should not happen...")
         }
     }   // End of GashCommand::run()
 

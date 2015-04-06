@@ -40,7 +40,9 @@ impl <'a>Shell<'a> {
             };
 
             let trimmed_command_string = command_string.trim();
+            
 
+            //recognizes escape character (arrow keys, etc) if non zero length
             if trimmed_command_string.len()>0 &&  trimmed_command_string.as_bytes()[0]==27 { 
                 continue;    
             }
