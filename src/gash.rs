@@ -147,6 +147,9 @@ enum GashCommand<'a> {
     Normal(GashOperation),
     /// A history command is "meta", in that it refers to old commands
     History(Vec<String>),
+    /// An alternate version of history that supports redirecting output to a file
+    /// This special case is necessary because history is handled internally
+    HistoryToFile(Vec<String>, Box<& 'a str>),
     /// A cd command changes the wd for the shell, its only content is a string containing the
     /// path of the directory to change to
     ChangeDirectory(Box<& 'a str>),
@@ -178,8 +181,16 @@ impl<'a> GashCommand<'a> {
                     None => GashCommand::ChangeDirectory(Box::new(""))
                 }
             },
+            // History with file redirection
+            Some(op) if full_command.contains(">") && op=="history" => {
+                let mut command = full_command.split_str(">");
+                command.next().unwrap();
+                GashCommand::HistoryToFile( history, Box::new(command.next().unwrap().trim()) )
+            }
+            // History with no file redirection (printing or piping)
             Some(op) if op=="history" => GashCommand::History(history),
 
+            // If op is not an internal command, check underlying system for command validity
             Some(op)   if !GashCommand::cmd_exists(op) => 
                 GashCommand::BadCommand(Box::new(op)),
 
@@ -189,7 +200,7 @@ impl<'a> GashCommand<'a> {
                 let mut tokens = command.next().unwrap().words();
                 tokens.next();
                 GashCommand::OutputRedirect( 
-                    GashOperation::new( Box::new(op), Box::new(tokens.collect())),
+                    GashOperation::new( Box::new(op), Box::new(tokens.collect()) ),
                     Box::new(command.next().unwrap().trim()) )
             }
 
@@ -199,13 +210,15 @@ impl<'a> GashCommand<'a> {
                 let mut tokens = command.next().unwrap().words();
                 tokens.next();
                 GashCommand::InputRedirect(
-                    GashOperation::new( Box::new(op), Box::new(tokens.collect())),
+                    GashOperation::new( Box::new(op), Box::new(tokens.collect()) ),
                     Box::new(command.next().unwrap().trim()) )
             }
 
             // Otherwise, this is just a normal command
             Some(op)   =>  GashCommand::Normal(
                 GashOperation::new(Box::new(op), Box::new(full_command_words.collect()))),
+            
+            // No string was present in operator position
             None => GashCommand::EmptyCommand
         }
     }   // End of new() for GashCommand
@@ -243,6 +256,33 @@ impl<'a> GashCommand<'a> {
                             println!("{}", history_line);
                         }
                     })}
+                }
+            }
+
+            // No process--use thread to read history and another thread to write to file
+            GashCommand::HistoryToFile(history, file_name) => {
+                // No channels used here
+                drop(thread_tx); drop(thread_rx);
+
+                // Channel for connecting history reading thread to file writing thread
+                let (file_sender, file_receiver) = mpsc::channel::<String>();
+
+                // Thread to write to file, reading from newly created channel
+                match GashCommand::create_io_writer(file_receiver, file_name) {
+                    Ok(_) => { 
+                        // File opened successfully, pass it history
+                        thread::spawn( move || {
+                            for history_line in history.into_iter() {
+                                match file_sender.send(history_line) {
+                                    Ok(_) => {}
+                                    Err(msg) => { panic!("Failed to pipe history: {}", msg) }
+                                }
+                            }
+                        })
+                    }
+
+                    Err(msg) => { thread::spawn( move || { 
+                        panic!("Error: Failed to open file. {}", msg) }) }
                 }
             }
 
