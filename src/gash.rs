@@ -325,7 +325,7 @@ impl<'a> GashCommand<'a> {
             let process_handle = gash_op.run_cmd().unwrap();
 
             // Spawn helper threads
-            match rx_channel {
+            let _ = match rx_channel {
                 Some(receiver) => {// Spawn a thread to handle in pipe
                     let mut stdin = process_handle.stdin.unwrap();
                     Some( thread::scoped(move || {
