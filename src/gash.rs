@@ -345,7 +345,7 @@ impl<'a> GashCommand<'a> {
                 }
                 None => { drop(process_handle.stdin); None } // No in-pipe, just drop handle
             };
-            match tx_channel {
+            let _ = match tx_channel {
                 Some(sender) => {// Spawn a thread to pass on out pipe
                     let stdout = process_handle.stdout.unwrap();
                     thread::scoped(move || {
