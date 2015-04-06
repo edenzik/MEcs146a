@@ -40,7 +40,7 @@ impl <'a>Shell<'a> {
             };
 
             let trimmed_command_string = command_string.trim();
-            
+
 
             //recognizes escape character (arrow keys, etc) if non zero length
             if trimmed_command_string.len()>0 &&  trimmed_command_string.as_bytes()[0]==27 { 
@@ -56,14 +56,12 @@ impl <'a>Shell<'a> {
                 // Special cases:
                 gash::GashCommandLine::Empty => { continue; }  // Present another prompt
                 gash::GashCommandLine::Exit => { break; }      // End REPL loop
-                
+
                 // Invalid input
-                gash::GashCommandLine::UnsupportedCommand(msg) => { 
-                    println!("{}", msg); continue; }
+                gash::GashCommandLine::UnsupportedCommand(msg) => println!("{}", msg),
 
                 // Invalid command
-                gash::GashCommandLine::InvalidCommand(msg) => { 
-                    println!("gash: command not found: {}", msg); continue; }
+                gash::GashCommandLine::InvalidCommand(msg) => println!("gash: command not found: {}", msg),
 
 
                 // Else, run this well-formed batch of commands
@@ -80,3 +78,24 @@ impl <'a>Shell<'a> {
 fn main() {
     Shell::new("gash > ").run();
 }
+
+#[test]
+fn valid_unix_command() {
+    let input = "echo hello";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::Foreground(_) => true,
+        _   => false
+    });
+}
+
+#[test]
+fn invalid_unix_command() {
+    let input = "echoa hello";
+    assert!(match gash::GashCommandLine::new(input,Vec::new()){
+        gash::GashCommandLine::Foreground(_) => true,
+        _   => false
+    });
+}
+
+
+
