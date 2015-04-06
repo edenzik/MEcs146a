@@ -77,6 +77,7 @@ impl<'a> GashCommandLine<'a> {
             let command = GashCommand::new(command_str, history.clone());
             match command {
                 GashCommand::BadCommand(msg)    => return Err(*msg),
+                GashCommand::EmptyCommand       => return Err("[empty command]"),
                 _                               => gash_command_vec.push(command)
             }
             
