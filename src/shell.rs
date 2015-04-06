@@ -1,3 +1,13 @@
+#![feature(old_io)]
+#![feature(collections)]
+#![feature(io)]
+#![feature(core)]
+#![feature(process)]
+#![feature(fs)]
+#![feature(os)]
+#![feature(old_path)]
+#![feature(str_words)]
+
 use std::old_io;
 
 mod gash;
