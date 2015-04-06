@@ -1,11 +1,9 @@
 use std::thread::{self, JoinHandle};
-use std::{old_io, os};
+use std::{env, str, process};
 use std::fs::File;
-use std::str;
 use std::sync::mpsc::{self, Sender, Receiver};
-use std::process;
 use std::result::Result as res;
-use std::io::{self, Read, Write, Result};
+use std::io::{Read, Write, Result};
 // use std::error::Error;
 
 /// Gash command line is the main unit containing a line of commands. It is represented
@@ -43,7 +41,7 @@ impl<'a> GashCommandLine<'a> {
                 '&' => {
                     // Last character &, create background batch
                     let removed_tip = input_line.slice_chars(0,input_line.len()-1);
-                    let mut gash_command_vec = 
+                    let gash_command_vec = 
                         GashCommandLine::create_gash_commands(removed_tip, history);
                     match gash_command_vec {
                         Err(msg) => GashCommandLine::InvalidCommand(msg),
@@ -52,7 +50,7 @@ impl<'a> GashCommandLine<'a> {
                 },
                 _   => {
                     // Last character not &, create foreground batch
-                    let mut gash_command_vec =
+                    let gash_command_vec =
                         GashCommandLine::create_gash_commands(input_line, history);
                     match gash_command_vec {
                         Err(msg) => GashCommandLine::InvalidCommand(msg),
@@ -127,7 +125,10 @@ impl<'a> GashCommandLine<'a> {
                 }
                 // Join on all handles to force command to run in foreground
                 for handle in handles.into_iter() {
-                    handle.join();
+                    match handle.join() {
+                        Err(_) => println!("Error: Child thread panicked."),
+                        _ => { }
+                    }
                 }
             }
             // Other matches covered in previous case
@@ -218,32 +219,41 @@ impl<'a> GashCommand<'a> {
             // No process--use thread to read history
             GashCommand::History(history) => {
                 match thread_tx {
+                    // Exit channel exists, write to it
                     Some(sender_handle) => { thread::spawn( move || {
                         for history_line in history.into_iter() {
-                            sender_handle.send(history_line).unwrap();
+                            match sender_handle.send(history_line) {
+                                Ok(_) => {}
+                                Err(msg) => { panic!("Failed to pipe history: {}", msg) }
+                            }
                         }
                     })}
-
+                    // No exit channel, print history instead
                     None => { thread::spawn( move || {
                         for history_line in history.into_iter() {
                             println!("{}", history_line);
                         }
                     })}
                 }
-
             }
+
             // If tx and rx are None, change system directory. Else do nothing.
             // This is the observed behavior from testing on Ubuntu 14.04
             GashCommand::ChangeDirectory( file_name ) => {
                 match (thread_tx, thread_rx) {
                     // If both none, actually change the directory
                     (None, None) => { 
-                        match *file_name { 
-                            "" => {
-                                os::change_dir(&os::homedir().unwrap()); }
-                            path => { 
-                                os::change_dir(&Path::new(path)).unwrap(); }
+                        let cd_status = match *file_name { 
+                            "" => { 
+                                match env::home_dir() {
+                                    Some(dir) => env::set_current_dir(&dir),
+                                    None => panic!("Error: Failed to get home directory.") } }
+                            path => { env::set_current_dir(&Path::new(path)) }
                         };
+                        match cd_status {
+                        Err(_) => { panic!("Error, failed to change directory.") }
+                        Ok(_) => { /* successfully changed dir */ }
+                        }
                         thread::spawn(move || { }) }
                     _ => { thread::spawn(move || {} ) } // Do nothing
                 }
@@ -257,7 +267,10 @@ impl<'a> GashCommand<'a> {
                 let (file_sender, file_receiver) = mpsc::channel::<String>();
 
                 // Thread to read from file and write into newly created channel
-                GashCommand::create_io_reader(file_sender, file_name);
+                match GashCommand::create_io_reader(file_sender, file_name) {
+                    Ok(_) => { }
+                    Err(msg) => { panic!("Error: Failed to open file. {}", msg) }
+                }
 
                 // Now start command like normal with new channel to read from
                 GashCommand::start_piped_process(thread_tx, Some(file_receiver),
@@ -276,13 +289,16 @@ impl<'a> GashCommand<'a> {
                     thread_rx, gash_operation);
 
                 // Thread to write to file, reading from newly created channel
-                GashCommand::create_io_writer(file_receiver, file_name);
+                match GashCommand::create_io_writer(file_receiver, file_name) {
+                    Ok(_) => { }
+                    Err(msg) => { panic!("Error: Failed to open file. {}", msg) }
+                }
 
                 handle
             }
 
             // GashCommandLine should not allow running a line that has a bad command in it
-            GashCommand::BadCommand(operator) =>  {
+            GashCommand::BadCommand(_) =>  {
                 panic!("Illegal Operation: Called run() on BadCommand");
             }   
         }
@@ -311,13 +327,13 @@ impl<'a> GashCommand<'a> {
                             };
                             match write_result {
                                 Ok(_) => { continue; }
-                                Err(_) => { println!("Error: Failed writing to channel");
+                                Err(_) => { println!("Error: Failed writing to channel.");
                                     break; }
                             }
                         }
                     }) )
                 }
-                None => { let a = process_handle.stdin; None } // No in-pipe, just drop handle
+                None => { drop(process_handle.stdin); None } // No in-pipe, just drop handle
             };
             match tx_channel {
                 Some(sender) => {// Spawn a thread to pass on out pipe
@@ -345,7 +361,7 @@ impl<'a> GashCommand<'a> {
             // Helper thread handles drop, joining on them.
 
         })
-    }   // End of start_piped_process
+    }   // End of GashCommand::start_piped_process()
 
     // This method to read from file and write to channel
     fn create_io_reader(channel : Sender<String>, file_name: Box<&str>)
@@ -397,7 +413,8 @@ struct GashOperation {
 }
 
 impl GashOperation {
-
+    /// Create new GashOperation by deep-copying string slices into internally referenced
+    /// Strings so that this struct can be self-contained and passed into threads safely.
     fn new(operator : Box<& str>, operands : Box<Vec<& str>>) -> GashOperation {
         let operator = String::from_str(*operator);
         let mut operands_string = Vec::new();
@@ -406,8 +423,8 @@ impl GashOperation {
         }
         GashOperation{operator:Box::new(operator),operands:Box::new(operands_string)}
     }
-    // Runs command with args
-    // Returns handle to the Command after spawning it
+    /// Runs command with args
+    /// Returns handle to the Command after spawning it
     fn run_cmd(&self) -> Result<process::Child> { 
         process::Command::new((*self.operator).as_slice()).args(&*self.operands.as_slice())
             .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
