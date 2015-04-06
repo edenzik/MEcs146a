@@ -4,9 +4,9 @@
 #![feature(core)]
 #![feature(process)]
 #![feature(fs)]
-#![feature(os)]
 #![feature(old_path)]
 #![feature(str_words)]
+#![feature(env)]
 
 use std::old_io;
 
