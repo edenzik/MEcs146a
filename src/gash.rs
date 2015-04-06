@@ -479,8 +479,7 @@ impl GashOperation {
     /// Returns handle to the Command after spawning it
     fn run_cmd(&self) -> Result<process::Child> { 
         process::Command::new((*self.operator).as_slice()).args(&*self.operands.as_slice())
-            .stdin(process::Stdio::capture()).stdout(process::Stdio::capture())
-            .stderr(process::Stdio::capture()).spawn()
+            .stdin(process::Stdio::capture()).stdout(process::Stdio::capture()).spawn()
     }
 }
 
