@@ -376,9 +376,8 @@ impl<'a> GashCommand<'a> {
                                 Err(_) => { break }
                             };
                             match write_result {
-                                Ok(_) => { continue; }
-                                Err(_) => { println!("Error: Failed writing to channel.");
-                                    break; }
+                                Ok(_) => { continue; } // Channel still open
+                                Err(_) => { break; } // Channel closed
                             }
                         }
                     }) )
@@ -392,7 +391,10 @@ impl<'a> GashCommand<'a> {
                         let process_reader = StdOutIter{ out : stdout };
 
                         for output in process_reader {
-                            sender.send(output).unwrap();
+                            match sender.send(output) {
+                                Ok(_) => { continue; } // Channel still open
+                                Err(_) => { break; } // Channel closed
+                            }
                         }
                     })
                 }
