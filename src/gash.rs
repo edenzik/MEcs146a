@@ -508,7 +508,8 @@ impl<'a> Iterator for StdOutIter {
 
         match output_str {
             Ok(string) => Some(string.to_string()),
-            Err(_) => Some(String::new())
+            Err(_) => { println!("Error: File not UTF8 encoding. Read failed.");
+                Some(String::new()) }
         }
 
     }
