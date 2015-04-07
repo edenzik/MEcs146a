@@ -508,7 +508,7 @@ impl<'a> Iterator for StdOutIter {
 
         match output_str {
             Ok(string) => Some(string.to_string()),
-            Err(_) => panic!("failed to convert stdin to String"),
+            Err(_) => Some(String::new())
         }
 
     }
@@ -542,7 +542,7 @@ impl<'a> Iterator for FileReadIter {
 
         match output_str {
             Ok(string) => Some(string.to_string()),
-            Err(_) => panic!("failed to convert stdin to String"),
+            Err(_) => Some(String::new()),
         }
 
     }
