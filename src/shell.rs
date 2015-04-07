@@ -128,7 +128,7 @@ fn empty_command() {
 fn single_bad_character_invalid_command() {
     let input = "&";
     assert!(match gash::GashCommandLine::new(input,Vec::new()){
-        gash::GashCommandLine::InvalidCommand => true,
+        gash::GashCommandLine::InvalidCommand(_) => true,
         _   => false
     });
 }
