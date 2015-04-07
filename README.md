@@ -1,4 +1,5 @@
 === Gash shell ===
+
 Authors: Michael Partridge, Eden Zik
 Course: CS146A - System Design
 Langauge: Rust
@@ -57,6 +58,7 @@ Using channels, we were able to route data amongst threads. Each transfer was ut
 
 
 == Building ==
+
 To build Gash shell, navigate to the src directory and execute the following command:
 
 `$rustc shell.rs`
@@ -64,6 +66,7 @@ To build Gash shell, navigate to the src directory and execute the following com
 This will create a shell binary in the current directory.
 
 == Running ==
+
 To run Gash shell, execute the following:
 
 `$./shell`
@@ -71,6 +74,7 @@ To run Gash shell, execute the following:
 A shell will promptly appear.
 
 == Testing ==
+
 To run basic unit tests, navigate to the src directory and execute the following command:
 
 `$rustc --test shell.rs`
