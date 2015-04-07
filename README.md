@@ -29,6 +29,7 @@ The following features present in the unix shell are not supported:
 - Multiple redirections with <>
 - Redirection between stdin, stdout, and stderr such as 2>&1
 - Batching with || and &&
+- Handling the printing of binary files
 
 The shell is designed to recover from any predictable error with a helpful message and return the user a new prompt. 
 
@@ -50,11 +51,10 @@ We utilized the powerful type system in Rust to make GashCommandLine an Algebrai
 This pattern was followed in GashCommand, which is also enumerated to enable pattern matching.
 
 Using channels, we were able to route data amongst threads. Each transfer was utilized using three threads:
-- External process thread containing an actual system Command (form the underlying OS)
+- External thread containing an actual system Command (form the underlying OS)
 - In thread passing information from a previous filter to the command
 - Out thread passing information from the command to the next filter
 
-<<<<Write more  about threading here>>>
 
 == Building ==
 To build Gash shell, navigate to the src directory and execute the following command:
