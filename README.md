@@ -47,11 +47,15 @@ The GashCommandLine struct encapsulates the behavior of parsing user line input 
 
 We utilized the powerful type system in Rust to make GashCommandLine an Algebraic Data Type (ADT) which we can then use for the purpose of propagating command lines containing a bad command, background commands (ones ending in &), command lines starting with an exit, or command lines that are not supported by our system (&& or ||).
 
+This pattern was followed in GashCommand, which is also enumerated to enable pattern matching.
 
-Each pipe delimited string is passed as a command, 
+Using channels, we were able to route data amongst threads. Each transfer was utilized using three threads:
+- External process thread containing an actual system Command (form the underlying OS)
+- In thread passing information from a previous filter to the command
+- Out thread passing information from the command to the next filter
 
+<<<<Write more  about threading here>>>
 
-We utilize the Rust type system to allow the Shell struct to match 
 == Building ==
 To build Gash shell, navigate to the src directory and execute the following command:
 
