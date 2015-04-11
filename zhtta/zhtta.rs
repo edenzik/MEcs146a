@@ -38,7 +38,6 @@ use std::borrow::ToOwned;
 use std::thread::Thread;
 use std::old_io::fs::PathExtensions;
 use std::old_io::{Acceptor, Listener};
-use std::old_io::BufferedReader;
 
 extern crate getopts;
 use getopts::{optopt, getopts};
@@ -146,8 +145,6 @@ impl WebServer {
                         Err(e)=> panic!("Error reading from the listener stream! {}", e),
                     };
                     debug!("Request:\n{}", request_str);
-
-                    //WebServer::enqueue_static_file_request(stream, &path_obj, stream_map_arc, request_queue_arc, notify_chan);
                     let req_group: Vec<&str> = request_str.splitn(3, ' ').collect();
                     if req_group.len() > 2 {
                         let path_str = ".".to_string() + req_group[1];
@@ -184,38 +181,35 @@ impl WebServer {
     }
 
     fn respond_with_error_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-			let mut stream = stream;
-			let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
-			stream.write(HTTP_BAD.as_bytes());
-			stream.write(msg.as_bytes());
+		let mut stream = stream;
+		let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
+		stream.write(HTTP_BAD.as_bytes());
+		stream.write(msg.as_bytes());
     }
 
     // TODO: Safe visitor counter.
     fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream) {
-			let mut stream = stream;
-      let response: String = 
-          format!("{}{}<h1>Greetings, Krusty!</h1><h2>Visitor count: {}</h2></body></html>\r\n", 
-                  HTTP_OK, COUNTER_STYLE, 
-                  unsafe { visitor_count } );
-      debug!("Responding to counter request");
-      stream.write(response.as_bytes());
+        let mut stream = stream;
+        let response: String = 
+            format!("{}{}<h1>Greetings, Krusty!</h1><h2>Visitor count: {}</h2></body></html>\r\n", 
+                    HTTP_OK, COUNTER_STYLE, 
+                    unsafe { visitor_count } );
+        debug!("Responding to counter request");
+        stream.write(response.as_bytes());
     }
     
     // TODO: Streaming file.
     // TODO: Application-layer file caching.
     fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-			let mut stream = stream;
-      let file_reader = File::open(path).unwrap();
-      stream.write(HTTP_OK.as_bytes());
-      let mut reader = BufferedReader::new(file_reader);
-			for line in reader.lines().filter_map(|result| result.ok()) {
-				let _ = stream.write_all(line.as_bytes());
-			}
+        let mut stream = stream;
+        let mut file_reader = File::open(path).unwrap();
+        stream.write(HTTP_OK.as_bytes());
+        stream.write(file_reader.read_to_end().unwrap().as_slice());
     }
     
     // TODO: Server-side gashing.
     fn respond_with_dynamic_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-			// for now, just serve as static file
+      // for now, just serve as static file
       WebServer::respond_with_static_file(stream, path);
     }
     
@@ -241,7 +235,6 @@ impl WebServer {
         let req = HTTP_Request { peer_name: peer_name.clone(), path: path_obj.clone() };
         let (req_tx, req_rx) = channel();
         req_tx.send(req);
-
         debug!("Waiting for queue mutex lock.");
         
         let local_req_queue = req_queue_arc.clone();
