@@ -62,7 +62,7 @@ static COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, 
              </style></head>
              <body>";
 
-static mut visitor_count : usize = 0;
+//static mut visitor_count : usize = 0;
 
 struct HTTP_Request {
     // Use peer_name as the key to access TcpStream in hashmap. 
@@ -77,6 +77,7 @@ struct WebServer {
     ip: String,
     port: usize,
     www_dir_path: Path,
+    visitor_count: usize,
     
     request_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
@@ -95,6 +96,7 @@ impl WebServer {
             ip:ip,
             port: port,
             www_dir_path: www_dir_path,
+            visitor_count: 0,
                         
             request_queue_arc: Arc::new(Mutex::new(Vec::new())),
             stream_map_arc: Arc::new(Mutex::new(HashMap::new())),
@@ -115,13 +117,16 @@ impl WebServer {
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
         let stream_map_arc = self.stream_map_arc.clone();
+        let visitor_count = self.visitor_count.clone();         //Clone a local copy of visitor_count
 
         Thread::spawn(move|| {
         	let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
+            let visitor_count = Arc::new(Mutex::new(visitor_count));        //Make a mutex wrapped by a reference counter of visitor_count
             let mut acceptor = listener.listen().unwrap();
             println!("{} listening on {} (serving from: {}).", 
                      SERVER_NAME, addr, www_dir_path_str.as_str().unwrap());
             for stream_raw in acceptor.incoming() {
+                let visitor_count = visitor_count.clone();      //Make a local copy of the Arc (increases its internal count)
                 let (queue_tx, queue_rx) = channel();
                 queue_tx.send(request_queue_arc.clone());
                 
@@ -130,7 +135,9 @@ impl WebServer {
                 
                 // Spawn a task to handle the connection.
                 Thread::spawn(move|| {
-                	unsafe { visitor_count += 1; } // TODO: Fix unsafe counter
+                    let mut visitor_count = visitor_count.lock().unwrap();  //Acquire lock on visitor_count, block until lock can be held
+                    *visitor_count+=1;      //Increment visitor_count
+                //	unsafe { visitor_count += 1; } // TODO: Fix unsafe counter
                     let request_queue_arc = queue_rx.recv().unwrap();
                     let mut stream = match stream_raw {
                         Ok(s) => {s}
@@ -160,7 +167,7 @@ impl WebServer {
                              
                         if path_str.as_slice().eq("./")  {
                             debug!("===== Counter Page request =====");
-                            WebServer::respond_with_counter_page(stream);
+                            WebServer::respond_with_counter_page(stream, *visitor_count);     //Pass by value visitor count
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         }  else if !path_obj.exists() || path_obj.is_dir() {
                             debug!("===== Error page request =====");
@@ -188,12 +195,12 @@ impl WebServer {
     }
 
     // TODO: Safe visitor counter.
-    fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream) {
+    fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream, visitor_count: usize) {
         let mut stream = stream;
         let response: String = 
             format!("{}{}<h1>Greetings, Krusty!</h1><h2>Visitor count: {}</h2></body></html>\r\n", 
                     HTTP_OK, COUNTER_STYLE, 
-                    unsafe { visitor_count } );
+                    visitor_count);     //print visitor count
         debug!("Responding to counter request");
         stream.write(response.as_bytes());
     }
