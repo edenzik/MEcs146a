@@ -30,7 +30,7 @@
 extern crate log;
 extern crate libc;
 
-use std::io::*;
+use std::io::{self, Read};
 use std::old_io::File;
 use std::{os, str};
 use std::old_path::posix::Path;
@@ -432,48 +432,9 @@ fn external_command(comment : &str) -> String{          //Iterates through a com
 
 fn execute_gash(command_string : &str) -> String {
     let args: &[_] = &["-c", &command_string];
-    let cmd = match Command::new("./gash").args(args).stdout(Stdio::capture()).spawn() {
+    let cmd = match Command::new("../gash").args(args).stdout(Stdio::capture()).output() {
         Ok(c) => c,
         Err(_) => panic!("Error spawning gash command to handle dynamic content."),
     };
-    let stdout = match cmd.stdout {
-        None => panic!("Failed to capture standard out from gash command."),
-        Some(out) => out,
-    };
-    let iter = StdOutIter{ out : stdout };
-    let mut result = String::new();
-    for text in iter {
-        result.push_str(&text.trim());
-    }
-    return result;
-
-}
-
-// Struct to encapsulate iteration over stdout from a spawned process
-// Calling next reads the next buffer length, chops it to size,
-// or returns None when the pipe is done.
-const BUFFER_SIZE :usize = 80;
-struct StdOutIter {
-    out: process::ChildStdout,
-}
-impl<'a> Iterator for StdOutIter {
-    type Item = String;
-
-    fn next(& mut self) -> Option<String> {
-        let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-        let buffer = &mut buffer_array;
-
-        let output_str = match self.out.read(buffer) {
-            Ok(length) => if length == 0 { return None }
-            else { str::from_utf8(&buffer[0..length]) },
-            Err(_)   => { return None },
-        };
-
-        match output_str {
-            Ok(string) => Some(string.to_string()),
-            Err(_) => { println!("Error: Output not UTF8 encoding. Read failed.");
-                None }
-        }
-
-    }
+    String::from_utf8(cmd.stdout).unwrap()
 }
