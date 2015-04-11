@@ -1,18 +1,36 @@
 #![feature(process)]
 #![feature(io)]
+#![feature(old_io)]
+
 
 use std::process::{self, Command, Stdio};
 use std::str;
 use std::io::Read;
+use std::old_io;
 
-const COMMAND :&'static str = "date";
+// const COMMAND :&'static str = "date";
 
 fn main() {
-    let args: &[_] = &["-c", COMMAND];
-    let cmd = Command::new("./gash").args(args).stdout(Stdio::capture()).spawn().unwrap();
-    let iter = StdOutIter{ out : cmd.stdout.unwrap() };
-    for text in iter {
-        println!("{}", text);
+    let mut stdin = old_io::BufferedReader::new(old_io::stdin());
+    loop {
+        old_io::stdio::print("Type requested gash command: ");
+        old_io::stdio::flush();
+
+        // Try to read from stdin
+        // If successful, create a GashCommandLine, otherwise let user try again
+        let command_string = match stdin.read_line() {
+            Ok(input_line) => input_line,
+            Err(msg) => { println!("Failed to read from stdin: {}", msg); continue; }
+        };
+
+
+        // Replace &command_string here with COMMAND to send static "date" command
+        let args: &[_] = &["-c", &command_string];
+        let cmd = Command::new("./gash").args(args).stdout(Stdio::capture()).spawn().unwrap();
+        let iter = StdOutIter{ out : cmd.stdout.unwrap() };
+        for text in iter {
+            print!("{}", text);
+        }
     }
 }
 
@@ -39,7 +57,7 @@ impl<'a> Iterator for StdOutIter {
         match output_str {
             Ok(string) => Some(string.to_string()),
             Err(_) => { println!("Error: Output not UTF8 encoding. Read failed.");
-                None }
+            None }
         }
 
     }
