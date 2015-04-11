@@ -21,7 +21,6 @@
 #![feature(os)]
 #![feature(core)]
 #![feature(collections)]
-#![feature(std_misc)]
 #![feature(process)]
 #![allow(non_camel_case_types)]
 #![allow(unused_must_use)]
@@ -30,13 +29,13 @@
 extern crate log;
 extern crate libc;
 
-use std::io::{self, Read};
+use std::io::Read;
 use std::old_io::File;
 use std::{os, str};
 use std::old_path::posix::Path;
 use std::collections::hash_map::HashMap;
 use std::borrow::ToOwned;
-use std::thread::{Thread, Builder};
+use std::thread::Builder;
 use std::old_io::fs::PathExtensions;
 use std::old_io::{Acceptor, Listener};
 
@@ -47,7 +46,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 
-use std::process::{self, Command, Stdio};
+use std::process::{Command, Stdio};
 
 static SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
@@ -216,22 +215,26 @@ impl WebServer {
         stream.write(file_reader.read_to_end().unwrap().as_slice());
     }
 
-    // TODO: Server-side gashing.
+    // Server-side gashing.
     fn respond_with_dynamic_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
         let mut stream = stream;
+        // Open file for dynamic content
         let mut file_reader = match File::open(path) {
             Ok(file) => file,
             Err(_) => panic!("Error opening dynamic page file."),
         };
         stream.write(HTTP_OK.as_bytes());
+        // Read file as bytes
         let file_content_bytes = match file_reader.read_to_end() {
             Ok(bytes) => bytes,
             Err(_) => panic!("Error reading dynamic page file as bytes."),
         };
+        // Convert file bytes to string
         let file_content = match String::from_utf8(file_content_bytes) {
             Ok(string) => string,
             Err(_) => panic!("Error converting file content to string."),
         };
+        // Process dynamic content and write to output stream
         let processed_output = process_external_commands(file_content.as_slice());
         stream.write(processed_output.as_bytes());
     }
@@ -379,6 +382,7 @@ fn main() {
     zhtta.run();
 }
 
+// Fill page with dynamically requested content
 fn process_external_commands(source : &str) -> String {
     let mut start = source.match_indices("<!--");       //indexes of all comment start sequences
     let mut end = source.match_indices("-->");          //indexes of all comment end sequences
@@ -394,7 +398,6 @@ fn process_external_commands(source : &str) -> String {
             None => break
         }
     }
-
 
     let mut output = String::new();                        //Resulting output
 
@@ -414,22 +417,22 @@ fn process_external_commands(source : &str) -> String {
         }        
     }
     output.push_str(&source[temp_index .. ]);               //Push the dangling end of the string
-
-    return output;
+    output
 }
 
 fn external_command(comment : &str) -> String{          //Iterates through a comment
     match comment.match_indices("#exec cmd=\"").next(){     //Finds index of command execution, if exists
         Some((_,start)) => {
             match comment[start..].match_indices("\"").next(){
-                Some((end,_)) => return execute_gash(&comment[start..start+end]),       //Executes gash
-                None => return String::from_str(comment)
+                Some((end,_)) => execute_gash(&comment[start..start+end]),       //Executes gash
+                None => String::from_str(comment)
             }
         },
-        None => return String::from_str(comment)        //Returns result
+        None => String::from_str(comment)        //Returns result
     }
 }
 
+/// Runs external command and returns the output
 fn execute_gash(command_string : &str) -> String {
     let args: &[_] = &["-c", &command_string];
     let cmd = match Command::new("../gash").args(args).stdout(Stdio::capture()).output() {
