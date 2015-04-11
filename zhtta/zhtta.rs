@@ -36,7 +36,7 @@ use std::{os, str};
 use std::old_path::posix::Path;
 use std::collections::hash_map::HashMap;
 use std::borrow::ToOwned;
-use std::thread::Thread;
+use std::thread::{Thread, Builder};
 use std::old_io::fs::PathExtensions;
 use std::old_io::{Acceptor, Listener};
 
@@ -120,7 +120,7 @@ impl WebServer {
         let stream_map_arc = self.stream_map_arc.clone();
         let visitor_count = self.visitor_count;         //Clone a local copy of visitor_count
 
-        Thread::spawn(move|| {
+        Builder::new().name("Listener".to_string()).spawn(move|| {
             let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
             let visitor_count = Arc::new(Mutex::new(visitor_count));        //Make a mutex wrapped by a reference counter of visitor_count
             let mut acceptor = listener.listen().unwrap();
@@ -135,8 +135,11 @@ impl WebServer {
                 let stream_map_arc = stream_map_arc.clone();
 
                 // Spawn a task to handle the connection.
-                Thread::spawn(move|| {
-                    let mut visitor_count = visitor_count.lock().unwrap();  //Acquire lock on visitor_count, block until lock can be held
+                Builder::new().name("Handler".to_string()).spawn(move|| {
+                    let mut visitor_count = match visitor_count.lock() {  //Acquire lock on visitor_count, block until lock can be held
+                        Ok(lock) => lock,
+                        Err(_) => panic!("Error getting lock for visit count."),
+                    };
                     *visitor_count += 1;      //Increment visitor_count
                     let request_queue_arc = queue_rx.recv().unwrap();
                     let mut stream = match stream_raw {
@@ -216,9 +219,19 @@ impl WebServer {
     // TODO: Server-side gashing.
     fn respond_with_dynamic_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
         let mut stream = stream;
-        let mut file_reader = File::open(path).unwrap();
+        let mut file_reader = match File::open(path) {
+            Ok(file) => file,
+            Err(_) => panic!("Error opening dynamic page file."),
+        };
         stream.write(HTTP_OK.as_bytes());
-        let file_content = String::from_utf8(file_reader.read_to_end().unwrap()).unwrap();
+        let file_content_bytes = match file_reader.read_to_end() {
+            Ok(bytes) => bytes,
+            Err(_) => panic!("Error reading dynamic page file as bytes."),
+        };
+        let file_content = match String::from_utf8(file_content_bytes) {
+            Ok(string) => string,
+            Err(_) => panic!("Error converting file content to string."),
+        };
         let processed_output = process_external_commands(file_content.as_slice());
         stream.write(processed_output.as_bytes());
     }
@@ -419,13 +432,20 @@ fn external_command(comment : &str) -> String{          //Iterates through a com
 
 fn execute_gash(command_string : &str) -> String {
     let args: &[_] = &["-c", &command_string];
-        let cmd = Command::new("./gash").args(args).stdout(Stdio::capture()).spawn().unwrap();
-        let iter = StdOutIter{ out : cmd.stdout.unwrap() };
-        let mut result = String::new();
-        for text in iter {
-            result.push_str(&text.trim());
-        }
-        return result;
+    let cmd = match Command::new("./gash").args(args).stdout(Stdio::capture()).spawn() {
+        Ok(c) => c,
+        Err(_) => panic!("Error spawning gash command to handle dynamic content."),
+    };
+    let stdout = match cmd.stdout {
+        None => panic!("Failed to capture standard out from gash command."),
+        Some(out) => out,
+    };
+    let iter = StdOutIter{ out : stdout };
+    let mut result = String::new();
+    for text in iter {
+        result.push_str(&text.trim());
+    }
+    return result;
 
 }
 
