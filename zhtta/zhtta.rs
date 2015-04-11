@@ -191,7 +191,6 @@ impl WebServer {
 		stream.write(msg.as_bytes());
     }
 
-    // TODO: Safe visitor counter.
     fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream, visitor_count: usize) {
         let mut stream = stream;
         let response: String = 
