@@ -8,8 +8,8 @@ use std::io::Read;
 const COMMAND :&'static str = "date";
 
 fn main() {
-    let args: &[_] = &[COMMAND];
-    let cmd = Command::new("gash").args(args).stdin(Stdio::capture()).stdout(Stdio::capture()).spawn().unwrap();
+    let args: &[_] = &["-c", COMMAND];
+    let cmd = Command::new("./gash").args(args).stdout(Stdio::capture()).spawn().unwrap();
     let iter = StdOutIter{ out : cmd.stdout.unwrap() };
     for text in iter {
         println!("{}", text);
