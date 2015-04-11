@@ -117,7 +117,7 @@ impl WebServer {
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
         let stream_map_arc = self.stream_map_arc.clone();
-        let visitor_count = self.visitor_count.clone();         //Clone a local copy of visitor_count
+        let visitor_count = self.visitor_count;         //Clone a local copy of visitor_count
 
         Thread::spawn(move|| {
         	let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
