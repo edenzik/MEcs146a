@@ -62,8 +62,6 @@ static COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, 
              </style></head>
              <body>";
 
-//static mut visitor_count : usize = 0;
-
 struct HTTP_Request {
     // Use peer_name as the key to access TcpStream in hashmap. 
 
@@ -136,8 +134,7 @@ impl WebServer {
                 // Spawn a task to handle the connection.
                 Thread::spawn(move|| {
                     let mut visitor_count = visitor_count.lock().unwrap();  //Acquire lock on visitor_count, block until lock can be held
-                    *visitor_count+=1;      //Increment visitor_count
-                //	unsafe { visitor_count += 1; } // TODO: Fix unsafe counter
+                    *visitor_count += 1;      //Increment visitor_count
                     let request_queue_arc = queue_rx.recv().unwrap();
                     let mut stream = match stream_raw {
                         Ok(s) => {s}
