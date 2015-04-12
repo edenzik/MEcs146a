@@ -405,15 +405,15 @@ fn process_external_commands(source : &str) -> String {
     return output;
 }
 
-fn external_command(comment : &str) -> String{
-    match comment.match_indices("#exec cmd=\"").next(){
+fn external_command(comment : &str) -> String{          //Iterates through a comment
+    match comment.match_indices("#exec cmd=\"").next(){     //Finds index of command execution, if exists
         Some((_,start)) => {
             match comment[start..].match_indices("\"").next(){
-                Some((end,_)) => return execute_gash(&comment[start..start+end]),
+                Some((end,_)) => return execute_gash(&comment[start..start+end]),       //Executes gash
                 None => return String::from_str(comment)
             }
         },
-        None => return String::from_str(comment)
+        None => return String::from_str(comment)        //Returns result
     }
 }
 
