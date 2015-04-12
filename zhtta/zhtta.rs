@@ -22,6 +22,7 @@
 #![feature(core)]
 #![feature(collections)]
 #![feature(std_misc)]
+#![feature(process)]
 #![allow(non_camel_case_types)]
 #![allow(unused_must_use)]
 #![allow(deprecated)]
@@ -45,6 +46,8 @@ use getopts::{optopt, getopts};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
+
+use std::process::{self, Command, Stdio};
 
 static SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
@@ -76,10 +79,10 @@ struct WebServer {
     port: usize,
     www_dir_path: Path,
     visitor_count: usize,
-    
+
     request_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
-    
+
     notify_rx: Receiver<()>,
     notify_tx: Sender<()>,
 }
@@ -95,22 +98,22 @@ impl WebServer {
             port: port,
             www_dir_path: www_dir_path,
             visitor_count: 0,
-                        
+
             request_queue_arc: Arc::new(Mutex::new(Vec::new())),
             stream_map_arc: Arc::new(Mutex::new(HashMap::new())),
-            
+
             notify_rx: notify_rx,
             notify_tx: notify_tx,
         }
     }
-    
+
     fn run(&mut self) {
         self.listen();
         self.dequeue_static_file_request();
     }
-    
+
     fn listen(&mut self) {
-    	let addr = String::from_str(format!("{}:{}", self.ip, self.port).as_slice());
+        let addr = String::from_str(format!("{}:{}", self.ip, self.port).as_slice());
         let www_dir_path_str = self.www_dir_path.clone();
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
@@ -118,7 +121,7 @@ impl WebServer {
         let visitor_count = self.visitor_count;         //Clone a local copy of visitor_count
 
         Thread::spawn(move|| {
-        	let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
+            let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
             let visitor_count = Arc::new(Mutex::new(visitor_count));        //Make a mutex wrapped by a reference counter of visitor_count
             let mut acceptor = listener.listen().unwrap();
             println!("{} listening on {} (serving from: {}).", 
@@ -127,10 +130,10 @@ impl WebServer {
                 let visitor_count = visitor_count.clone();      //Make a local copy of the Arc (increases its internal count)
                 let (queue_tx, queue_rx) = channel();
                 queue_tx.send(request_queue_arc.clone());
-                
+
                 let notify_chan = notify_tx.clone();
                 let stream_map_arc = stream_map_arc.clone();
-                
+
                 // Spawn a task to handle the connection.
                 Thread::spawn(move|| {
                     let mut visitor_count = visitor_count.lock().unwrap();  //Acquire lock on visitor_count, block until lock can be held
@@ -138,8 +141,8 @@ impl WebServer {
                     let request_queue_arc = queue_rx.recv().unwrap();
                     let mut stream = match stream_raw {
                         Ok(s) => {s}
-				        Err(e) => { panic!("Error getting the listener stream! {}", e) }
-				    };
+                        Err(e) => { panic!("Error getting the listener stream! {}", e) }
+                    };
                     let peer_name = WebServer::get_peer_name(&mut stream);
                     debug!("Got connection from {}", peer_name);
                     let mut buf: [u8;500] = [0;500];
@@ -158,10 +161,10 @@ impl WebServer {
                             Some(e) => e,
                             None => "",
                         };
-                       
+
                         debug!("Requested path: [{}]", path_obj.as_str().expect("error"));
                         debug!("Requested path: [{}]", path_str);
-                             
+
                         if path_str.as_slice().eq("./")  {
                             debug!("===== Counter Page request =====");
                             WebServer::respond_with_counter_page(stream, *visitor_count);     //Pass by value visitor count
@@ -181,14 +184,14 @@ impl WebServer {
                     }
                 });
             }
-		});
+        });
     }
 
     fn respond_with_error_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-		let mut stream = stream;
-		let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
-		stream.write(HTTP_BAD.as_bytes());
-		stream.write(msg.as_bytes());
+        let mut stream = stream;
+        let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
+        stream.write(HTTP_BAD.as_bytes());
+        stream.write(msg.as_bytes());
     }
 
     fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream, visitor_count: usize) {
@@ -200,7 +203,7 @@ impl WebServer {
         debug!("Responding to counter request");
         stream.write(response.as_bytes());
     }
-    
+
     // TODO: Streaming file.
     // TODO: Application-layer file caching.
     fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
@@ -209,16 +212,20 @@ impl WebServer {
         stream.write(HTTP_OK.as_bytes());
         stream.write(file_reader.read_to_end().unwrap().as_slice());
     }
-    
+
     // TODO: Server-side gashing.
     fn respond_with_dynamic_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-      // for now, just serve as static file
-      WebServer::respond_with_static_file(stream, path);
+        let mut stream = stream;
+        let mut file_reader = File::open(path).unwrap();
+        stream.write(HTTP_OK.as_bytes());
+        let file_content = String::from_utf8(file_reader.read_to_end().unwrap()).unwrap();
+        let processed_output = process_external_commands(file_content.as_slice());
+        stream.write(processed_output.as_bytes());
     }
-    
+
     // TODO: Smarter Scheduling.
     fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
-    	// Save stream in hashmap for later response.
+        // Save stream in hashmap for later response.
         let mut stream = stream;
         let peer_name = WebServer::get_peer_name(&mut stream);
         let (stream_tx, stream_rx) = channel();
@@ -239,7 +246,7 @@ impl WebServer {
         let (req_tx, req_rx) = channel();
         req_tx.send(req);
         debug!("Waiting for queue mutex lock.");
-        
+
         let local_req_queue = req_queue_arc.clone();
         {   // make sure we request the lock inside a block with different scope, so that we give it back at the end of that block
             let mut local_req_queue = local_req_queue.lock().unwrap();
@@ -252,7 +259,7 @@ impl WebServer {
             notify_chan.send(()); // Send incoming notification to responder task. 
         }
     }
-    
+
     // TODO: Smarter Scheduling.
     fn dequeue_static_file_request(&mut self) {
         let req_queue_get = self.request_queue_arc.clone();
@@ -291,7 +298,7 @@ impl WebServer {
             debug!("=====Terminated connection from [{}].=====", request.peer_name);
         }
     }
-    
+
     fn get_peer_name(stream: &mut std::old_io::net::tcp::TcpStream) -> String{
         match stream.peer_name(){
             Ok(s) => {format!("{}:{}", s.ip, s.port)}
@@ -301,24 +308,24 @@ impl WebServer {
 }
 
 fn get_args() -> (String, usize, String) {
-	fn print_usage(program: &str) {
+    fn print_usage(program: &str) {
         println!("Usage: {} [options]", program);
         println!("--ip     \tIP address, \"{}\" by default.", IP);
         println!("--port   \tport number, \"{}\" by default.", PORT);
         println!("--www    \tworking directory, \"{}\" by default", WWW_DIR);
         println!("-h --help \tUsage");
     }
-    
+
     /* Begin processing program arguments and initiate the parameters. */
     let args = os::args();
     let program = args[0].clone();
-    
+
     let opts = [
         getopts::optopt("", "ip", "The IP address to bind to", "IP"),
         getopts::optopt("", "port", "The Port to bind to", "PORT"),
         getopts::optopt("", "www", "The www directory", "WWW_DIR"),
         getopts::optflag("h", "help", "Display help"),
-    ];
+        ];
 
     let matches = match getopts::getopts(args.tail(), &opts) {
         Ok(m) => { m }
@@ -329,13 +336,13 @@ fn get_args() -> (String, usize, String) {
         print_usage(program.as_slice());
         unsafe { libc::exit(1); }
     }
-    
+
     let ip_str = if matches.opt_present("ip") {
-                    matches.opt_str("ip").expect("invalid ip address?").to_owned()
-                 } else {
-                    IP.to_owned()
-                 };
-    
+        matches.opt_str("ip").expect("invalid ip address?").to_owned()
+    } else {
+        IP.to_owned()
+    };
+
     let port:usize = if matches.opt_present("port") {
         let input_port = matches.opt_str("port").expect("Invalid port number?").trim().parse::<usize>().ok();
         match input_port {
@@ -345,11 +352,11 @@ fn get_args() -> (String, usize, String) {
     } else {
         PORT
     };
-    
+
     let www_dir_str = if matches.opt_present("www") {
-                        matches.opt_str("www").expect("invalid www argument?") 
-                      } else { WWW_DIR.to_owned() };
-    
+        matches.opt_str("www").expect("invalid www argument?") 
+    } else { WWW_DIR.to_owned() };
+
     (ip_str, port, www_dir_str)    
 }
 
@@ -357,4 +364,96 @@ fn main() {
     let (ip_str, port, www_dir_str) = get_args();
     let mut zhtta = WebServer::new(ip_str, port, www_dir_str);
     zhtta.run();
+}
+
+fn process_external_commands(source : &str) -> String {
+    let mut start = source.match_indices("<!--");       //indexes of all comment start sequences
+    let mut end = source.match_indices("-->");          //indexes of all comment end sequences
+
+    let mut ranges = Vec::new();                        //index of all comment ranges
+
+    loop {                                             //Iterate over starts and end sequences, add their beginning and end to ranges as pair (start,end)
+        match start.next(){
+            Some((x,_)) => match end.next(){
+                Some((_,y)) => ranges.push((x,y)),
+                None => break
+            },
+            None => break
+        }
+    }
+
+
+    let mut output = String::new();                        //Resulting output
+
+    let mut temp_index = 0;                             //Temporary index
+
+    for range in ranges{                                //Iterate over ranges
+        match range {
+            (start,end) if start<end => {
+                output.push_str(&source[temp_index .. start]);
+                output.push_str(&external_command(&source[start .. end]));
+                temp_index = end;
+            },
+            _   =>  {                                   //A parsing error occurred, abort and return the original HTML for security
+                println!("parse error");
+                return String::from_str(source);
+            }
+        }        
+    }
+    output.push_str(&source[temp_index .. ]);               //Push the dangling end of the string
+
+    return output;
+}
+
+fn external_command(comment : &str) -> String{
+    match comment.match_indices("#exec cmd=\"").next(){
+        Some((_,start)) => {
+            match comment[start..].match_indices("\"").next(){
+                Some((end,_)) => return execute_gash(&comment[start..start+end]),
+                None => return String::from_str(comment)
+            }
+        },
+        None => return String::from_str(comment)
+    }
+}
+
+fn execute_gash(command_string : &str) -> String {
+    let args: &[_] = &["-c", &command_string];
+        let cmd = Command::new("./gash").args(args).stdout(Stdio::capture()).spawn().unwrap();
+        let iter = StdOutIter{ out : cmd.stdout.unwrap() };
+        let mut result = String::new();
+        for text in iter {
+            result.push_str(&text.trim());
+        }
+        return result;
+
+}
+
+// Struct to encapsulate iteration over stdout from a spawned process
+// Calling next reads the next buffer length, chops it to size,
+// or returns None when the pipe is done.
+const BUFFER_SIZE :usize = 80;
+struct StdOutIter {
+    out: process::ChildStdout,
+}
+impl<'a> Iterator for StdOutIter {
+    type Item = String;
+
+    fn next(& mut self) -> Option<String> {
+        let mut buffer_array : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        let buffer = &mut buffer_array;
+
+        let output_str = match self.out.read(buffer) {
+            Ok(length) => if length == 0 { return None }
+            else { str::from_utf8(&buffer[0..length]) },
+            Err(_)   => { return None },
+        };
+
+        match output_str {
+            Ok(string) => Some(string.to_string()),
+            Err(_) => { println!("Error: Output not UTF8 encoding. Read failed.");
+                None }
+        }
+
+    }
 }
