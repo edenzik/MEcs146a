@@ -391,9 +391,12 @@ fn process_external_commands(source : &str) -> String {
 
     loop {                                             //Iterate over starts and end sequences, add their beginning and end to ranges as pair (start,end)
         match start.next(){
-            Some((x,_)) => match end.next(){
-                Some((_,y)) => ranges.push((x,y)),
-                None => break
+            Some((head,_)) => match end.next(){
+                Some((_,tail)) => ranges.push((head,tail)),
+                None => {
+                    debug!("BAD PARSE: Missing end of comment string in position {}", head);
+                    break;
+                }
             },
             None => break
         }
@@ -410,8 +413,8 @@ fn process_external_commands(source : &str) -> String {
                 output.push_str(&external_command(&source[start .. end]));
                 temp_index = end;
             },
-            _   =>  {                                   //A parsing error occurred, abort and return the original HTML for security
-                println!("parse error");
+            (_,end)   =>  {                                   //A parsing error occurred, abort and return the original HTML for security
+                debug!("BAD PARSE: Dangling end comment string at position {}",end);
                 return String::from_str(source);
             }
         }        
@@ -423,9 +426,12 @@ fn process_external_commands(source : &str) -> String {
 fn external_command(comment : &str) -> String{          //Iterates through a comment
     match comment.match_indices("#exec cmd=\"").next(){     //Finds index of command execution, if exists
         Some((_,start)) => {
-            match comment[start..].match_indices("\"").next(){
+            match comment[start..].match_indices("\"").last(){
                 Some((end,_)) => execute_gash(&comment[start..start+end]),       //Executes gash
-                None => String::from_str(comment)
+                None => {
+                    debug!("BAD PARSE: No quote terminating command at position {}",start);
+                    return String::from_str(comment);
+                }
             }
         },
         None => String::from_str(comment)        //Returns result
