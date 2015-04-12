@@ -382,7 +382,7 @@ fn main() {
     zhtta.run();
 }
 
-// Fill page with dynamically requested content
+/// Fill page with dynamically requested content by parsing comment syntax.
 fn process_external_commands(source : &str) -> String {
     let mut start = source.match_indices("<!--");       //indexes of all comment start sequences
     let mut end = source.match_indices("-->");          //indexes of all comment end sequences
@@ -423,6 +423,8 @@ fn process_external_commands(source : &str) -> String {
     output
 }
 
+///Parses comment string with a command in it. Returns comment string verbatim if command not
+///found, otherwise parses command and passes it to execute gash which carries it out.
 fn external_command(comment : &str) -> String{          //Iterates through a comment
     match comment.match_indices("#exec cmd=\"").next(){     //Finds index of command execution, if exists
         Some((_,start)) => {
@@ -443,7 +445,10 @@ fn execute_gash(command_string : &str) -> String {
     let args: &[_] = &["-c", &command_string];
     let cmd = match Command::new("../gash").args(args).stdout(Stdio::capture()).output() {
         Ok(c) => c,
-        Err(_) => panic!("Error spawning gash command to handle dynamic content."),
+        Err(_) => {
+            debug!("ERROR: failed to spawn gash command to handle dynamic content, is gash binary present at top level directory?");
+            return String::from_str(command_string);
+        }
     };
     String::from_utf8(cmd.stdout).unwrap()
 }
