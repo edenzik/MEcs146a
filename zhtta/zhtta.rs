@@ -121,12 +121,15 @@ impl WebServer {
 
         Builder::new().name("Listener".to_string()).spawn(move|| {
             let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
-            let visitor_count = Arc::new(Mutex::new(visitor_count));        //Make a mutex wrapped by a reference counter of visitor_count
+
+            //Make a mutex wrapped by a reference counter of visitor_count
+            let visitor_count = Arc::new(Mutex::new(visitor_count));        
             let mut acceptor = listener.listen().unwrap();
             println!("{} listening on {} (serving from: {}).", 
                      SERVER_NAME, addr, www_dir_path_str.as_str().unwrap());
             for stream_raw in acceptor.incoming() {
-                let visitor_count = visitor_count.clone();      //Make a local copy of the Arc (increases its internal count)
+                //Make a local copy of the Arc (increases its internal count)
+                let visitor_count = visitor_count.clone();
                 let (queue_tx, queue_rx) = channel();
                 queue_tx.send(request_queue_arc.clone());
 
@@ -135,7 +138,8 @@ impl WebServer {
 
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
-                    let mut visitor_count = match visitor_count.lock() {  //Acquire lock on visitor_count, block until lock can be held
+                    //Acquire lock on visitor_count, block until lock can be held
+                    let mut visitor_count = match visitor_count.lock() {
                         Ok(lock) => lock,
                         Err(_) => panic!("Error getting lock for visit count."),
                     };
@@ -240,7 +244,9 @@ impl WebServer {
     }
 
     // TODO: Smarter Scheduling.
-    fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
+    fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, 
+        stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
+        req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
         let mut stream = stream;
         let peer_name = WebServer::get_peer_name(&mut stream);
@@ -251,7 +257,8 @@ impl WebServer {
             Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
         };
         let local_stream_map = stream_map_arc.clone();
-        {   // make sure we request the lock inside a block with different scope, so that we give it back at the end of that block
+        {   // make sure we request the lock inside a block with different scope,
+            // so that we give it back at the end of that block
             let mut local_stream_map = local_stream_map.lock().unwrap();
             local_stream_map.insert(peer_name.clone(), stream);
         }
@@ -264,7 +271,8 @@ impl WebServer {
         debug!("Waiting for queue mutex lock.");
 
         let local_req_queue = req_queue_arc.clone();
-        {   // make sure we request the lock inside a block with different scope, so that we give it back at the end of that block
+        {   // make sure we request the lock inside a block with different scope, 
+            // so that we give it back at the end of that block
             let mut local_req_queue = local_req_queue.lock().unwrap();
             let req: HTTP_Request = match req_rx.recv(){
                 Ok(s) => s,
@@ -280,11 +288,13 @@ impl WebServer {
     fn dequeue_static_file_request(&mut self) {
         let req_queue_get = self.request_queue_arc.clone();
         let stream_map_get = self.stream_map_arc.clone();
-        // Receiver<> cannot be sent to another task. So we have to make this task as the main task that can access self.notify_rx.
+        // Receiver<> cannot be sent to another task. So we have to make this task as the main task
+        // that can access self.notify_rx.
         let (request_tx, request_rx) = channel();
         loop {
             self.notify_rx.recv();    // waiting for new request enqueued.
-            {   // make sure we request the lock inside a block with different scope, so that we give it back at the end of that block
+            {   // make sure we request the lock inside a block with different scope, so that we
+                // give it back at the end of that block
                 let mut req_queue = req_queue_get.lock().unwrap();
                 if req_queue.len() > 0 {
                     let req = req_queue.remove(0);
@@ -299,12 +309,14 @@ impl WebServer {
             };
             // Get stream from hashmap.
             let (stream_tx, stream_rx) = channel();
-            {   // make sure we request the lock inside a block with different scope, so that we give it back at the end of that block
+            {   // make sure we request the lock inside a block with different scope,
+                // so that we give it back at the end of that block
                 let mut stream_map = stream_map_get.lock().unwrap();
                 let stream = stream_map.remove(&request.peer_name).expect("no option tcpstream");
                 stream_tx.send(stream);
             }
-            // TODO: Spawning more tasks to respond the dequeued requests concurrently. You may need a semophore to control the concurrency.
+            // TODO: Spawning more tasks to respond the dequeued requests concurrently.
+            // You may need a semophore to control the concurrency.
             let stream = match stream_rx.recv(){
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
