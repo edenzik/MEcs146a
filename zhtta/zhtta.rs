@@ -213,10 +213,14 @@ impl WebServer {
     // TODO: Streaming file.
     // TODO: Application-layer file caching.
     fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
-        let mut stream = stream;
-        let mut file_reader = File::open(path).unwrap();
-        stream.write(HTTP_OK.as_bytes());
-        stream.write(file_reader.read_to_end().unwrap().as_slice());
+        let l_stream = stream;
+        let l_file_reader = File::open(path).unwrap();
+        Builder::new().name("Responder".to_string()).spawn(move|| {
+            let mut stream = l_stream;
+            let mut file_reader = l_file_reader;
+            stream.write(HTTP_OK.as_bytes());
+            stream.write(file_reader.read_to_end().unwrap().as_slice());
+        });
     }
 
     // Server-side gashing.
