@@ -52,6 +52,7 @@ use std::process::{Command, Stdio};
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
 const REQ_HANDLER_COUNT : isize = 20; // Max number of file request handler threads
+const BUFFER_SIZE : usize = 512;    //Size of file buffer to send
 
 const IP : &'static str = "127.0.0.1";
 const PORT : usize = 4414;
@@ -213,7 +214,7 @@ impl WebServer {
         stream.write(response.as_bytes());
     }
 
-    // TODO: Streaming file.
+    // Initializes a buffer, writes BUFFER_SIZE segments of file to that buffer
     // TODO: Application-layer file caching.
     fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path, sem: Arc<Semaphore>) {
         let l_stream = stream;
@@ -221,8 +222,16 @@ impl WebServer {
         Builder::new().name("Responder".to_string()).spawn(move|| {
             let mut stream = l_stream;
             let mut file_reader = l_file_reader;
+            let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             stream.write(HTTP_OK.as_bytes());
-            stream.write(file_reader.read_to_end().unwrap().as_slice());
+            loop {
+                match file_reader.read(&mut buf) {
+                    Ok(length) if length==0 => break,
+                    Ok(_)   => {},                      //Continue if buffer not empty
+                    Err(_)  => break
+                }
+                stream.write(&mut buf);
+            }
             sem.release();
         });
     }
