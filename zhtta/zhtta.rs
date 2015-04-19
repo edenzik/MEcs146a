@@ -22,6 +22,7 @@
 #![feature(core)]
 #![feature(collections)]
 #![feature(process)]
+#![feature(std_misc)]
 #![allow(non_camel_case_types)]
 #![allow(unused_must_use)]
 #![allow(deprecated)]
@@ -42,22 +43,24 @@ use std::old_io::{Acceptor, Listener};
 extern crate getopts;
 use getopts::{optopt, getopts};
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Semaphore};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 
 use std::process::{Command, Stdio};
 
-static SERVER_NAME : &'static str = "Zhtta Version 1.0";
+const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
-static IP : &'static str = "127.0.0.1";
-static PORT : usize = 4414;
-static WWW_DIR : &'static str = "./www";
+const REQ_HANDLER_COUNT : isize = 20; // Max number of file request handler threads
 
-static HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
-static HTTP_BAD : &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
+const IP : &'static str = "127.0.0.1";
+const PORT : usize = 4414;
+const WWW_DIR : &'static str = "./www";
 
-static COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, Rust!</title>
+const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
+const HTTP_BAD : &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+const COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, Rust!</title>
              <style>body { background-color: #884414; color: #FFEEAA}
                     h1 { font-size:2cm; text-align: center; color: black; text-shadow: 0 0 4mm red }
                     h2 { font-size:2cm; text-align: center; color: black; text-shadow: 0 0 4mm green }
@@ -212,7 +215,7 @@ impl WebServer {
 
     // TODO: Streaming file.
     // TODO: Application-layer file caching.
-    fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
+    fn respond_with_static_file(stream: std::old_io::net::tcp::TcpStream, path: &Path, sem: Arc<Semaphore>) {
         let l_stream = stream;
         let l_file_reader = File::open(path).unwrap();
         Builder::new().name("Responder".to_string()).spawn(move|| {
@@ -220,6 +223,7 @@ impl WebServer {
             let mut file_reader = l_file_reader;
             stream.write(HTTP_OK.as_bytes());
             stream.write(file_reader.read_to_end().unwrap().as_slice());
+            sem.release();
         });
     }
 
@@ -290,6 +294,8 @@ impl WebServer {
 
     // TODO: Smarter Scheduling.
     fn dequeue_static_file_request(&mut self) {
+        let req_semaphore_arc = Arc::new(Semaphore::new(REQ_HANDLER_COUNT));
+
         let req_queue_get = self.request_queue_arc.clone();
         let stream_map_get = self.stream_map_arc.clone();
         // Receiver<> cannot be sent to another task. So we have to make this task as the main task
@@ -325,7 +331,10 @@ impl WebServer {
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
             };
-            WebServer::respond_with_static_file(stream, &request.path);
+
+            req_semaphore_arc.acquire();
+
+            WebServer::respond_with_static_file(stream, &request.path, req_semaphore_arc.clone());
             // Close stream automatically.
             debug!("=====Terminated connection from [{}].=====", request.peer_name);
         }
