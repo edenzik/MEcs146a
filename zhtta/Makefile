@@ -17,6 +17,9 @@ clean :
 run: ${PROGRAM_NAME}
 	./${PROGRAM_NAME}
 
+debug: ${PROGRAM_NAME}
+	RUST_LOG=debug ./${PROGRAM_NAME}
+
 generate: www
 	dd if=/dev/urandom of=www/5K.bin bs=5k count=1
 	dd if=/dev/urandom of=www/5M.bin bs=5k count=1
