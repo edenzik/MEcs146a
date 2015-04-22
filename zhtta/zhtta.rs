@@ -186,18 +186,16 @@ impl WebServer {
 
         Builder::new().name("Listener".to_string()).spawn(move|| {
             let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
-           // let cache_a = Arc::file_cache.clone();
 
-            //let xx = Arc::new(Mutex::new(cache_a));
-            //Make a mutex wrapped by a reference counter of visitor_count
+            // Make a mutex wrapped by a reference counter of visitor_count
             let visitor_count = Arc::new(Mutex::new(visitor_count)); 
             let mut acceptor = listener.listen().unwrap();
             println!("{} listening on {} (serving from: {}).", 
                      SERVER_NAME, addr, www_dir_path_str.as_str().unwrap());
             for stream_raw in acceptor.incoming() {
-                //Make a local copy of the Arc (increases its internal count)
+                // Make a local copy of the Arc (increases its internal count)
                 let visitor_count = visitor_count.clone();
-                //let file_cache = self.file_cache.clone();
+
                 let (queue_tx, queue_rx) = channel();
                 queue_tx.send(request_queue_arc.clone());
 
@@ -208,16 +206,17 @@ impl WebServer {
 
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
-                      //  let h = b.clone();
-                  //  let b = cache_a.clone().lock().unwrap();
-                  //  let b = xx.lock().unwrap();
-                   // let x = file_cache_arc.clone().lock();
-                    //Acquire lock on visitor_count, block until lock can be held
-                    let mut visitor_count = match visitor_count.lock() {
-                        Ok(lock) => lock,
-                        Err(_) => panic!("Error getting lock for visit count."),
-                    };
-                    *visitor_count += 1;      //Increment visitor_count
+                    let (visit_tx, visit_rx) = channel();
+                    {   // Lock visitor_count inside scope to unlock when done
+                        // Acquire lock on visitor_count, block until lock can be held
+                        let mut visitor_count = match visitor_count.lock() {
+                            Ok(count) => count,
+                            Err(_) => panic!("Error getting lock for visit count."),
+                        };
+                        *visitor_count += 1;      //Increment visitor_count
+                        visit_tx.send(visitor_count.clone()).unwrap();
+                    }
+                    let this_count = visit_rx.recv().unwrap();
 
                     let request_queue_arc = queue_rx.recv().unwrap();
 
@@ -251,7 +250,7 @@ impl WebServer {
 
                         if path_str.as_slice().eq("./")  {
                             debug!("===== Counter Page request =====");
-                            WebServer::respond_with_counter_page(stream, *visitor_count);     //Pass by value visitor count
+                            WebServer::respond_with_counter_page(stream, this_count);     //Pass by value visitor count
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         }  else if !path_obj.exists() || path_obj.is_dir() {
                             debug!("===== Error page request =====");
