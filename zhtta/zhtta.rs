@@ -34,7 +34,7 @@ use std::io::Read;
 use std::old_io::File;
 use std::{os, str};
 use std::old_path::posix::Path;
-use std::collections::hash_map::HashMap;
+use std::collections::{ PriorityQueue, hash_map::HashMap };
 use std::borrow::ToOwned;
 use std::thread::Builder;
 use std::old_io::fs::PathExtensions;
@@ -115,7 +115,7 @@ struct WebServer {
     www_dir_path: Path,
     visitor_count: usize,
 
-    request_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>,
+    request_queue_arc: Arc<Mutex<PriorityQueue<HTTP_Request>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
     file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             //A HashMap of file caches 
     cache_size: Arc<Mutex<u64>>,                                    //Keeps track of cache size
@@ -363,7 +363,7 @@ impl WebServer {
     // TODO: Smarter Scheduling.
     fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, 
        stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
-       req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
+       req_queue_arc: Arc<Mutex<PriorityQueue<HTTP_Request>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
         let mut stream = stream;
         let peer_name = WebServer::get_peer_name(&mut stream);
@@ -383,7 +383,7 @@ impl WebServer {
 
         // Enqueue the HTTP request.
         // TOCHECK: it was ~path_obj.clone(), make sure in which order are ~ and clone() executed
-        let req = HTTP_Request { peer_name: peer_name.clone(), path: path_obj.clone() };
+        let req = HTTP_Request::new(peer_name.clone(), path_obj.clone());
         let (req_tx, req_rx) = channel();
         req_tx.send(req);
 
