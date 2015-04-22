@@ -34,7 +34,9 @@ use std::io::Read;
 use std::old_io::File;
 use std::{os, str};
 use std::old_path::posix::Path;
-use std::collections::{ PriorityQueue, hash_map::HashMap };
+use std::collections::BinaryHeap;
+use std::collections::hash_map::HashMap;
+use std::cmp::Ordering;
 use std::borrow::ToOwned;
 use std::thread::Builder;
 use std::old_io::fs::PathExtensions;
@@ -83,20 +85,34 @@ struct HTTP_Request {
 impl HTTP_Request {
     /// Constructor for HTTP_Request makes blocking call to system for file statistics
     fn new(peer_name: String, path: Path) -> HTTP_Request {
-        let stats = path.stats().unwrap();
+        let stats = path.stat().unwrap();
 
         HTTP_Request { peer_name: peer_name, path: path, size: stats.size, modified: stats.modified }
     }
 }
 
+impl PartialOrd for HTTP_Request {
+    fn partial_cmp(&self, other: &HTTP_Request) -> Option<Ordering> {
+        match (self.size, other.size) {
+            (x,y) if x < y => Some(Ordering::Less),
+            (x,y) if x == y => Some(Ordering::Equal),
+            _ => Some(Ordering::Greater)
+        }
+    }
+}
+
+impl PartialEq for HTTP_Request {
+    fn eq(&self, other: &HTTP_Request) -> bool {
+        self.size == other.size
+    }
+}
+
+impl Eq for HTTP_Request {}
+
 /// Makes HTTP_Requests sortable by size of requested file
 impl Ord for HTTP_Request {
-    fm cmp(&self, other: HTTP_Request) -> Ordering {
-        match (self.size, other.size) {
-            (x,y) if x < y => Ordering::Less,
-            (x,y) if x = y => Ordering::Equal,
-            else => Ordering::Greater
-        }
+    fn cmp(&self, other: &HTTP_Request) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -115,7 +131,7 @@ struct WebServer {
     www_dir_path: Path,
     visitor_count: usize,
 
-    request_queue_arc: Arc<Mutex<PriorityQueue<HTTP_Request>>>,
+    request_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
     file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             //A HashMap of file caches 
     cache_size: Arc<Mutex<u64>>,                                    //Keeps track of cache size
@@ -136,7 +152,7 @@ impl WebServer {
             www_dir_path: www_dir_path,
             visitor_count: 0,
 
-            request_queue_arc: Arc::new(Mutex::new(Vec::new())),
+            request_queue_arc: Arc::new(Mutex::new(BinaryHeap::new())),
             stream_map_arc: Arc::new(Mutex::new(HashMap::new())),
             file_cache: Arc::new(Mutex::new(HashMap::new())),               //Initializes file cache
             cache_size: Arc::new(Mutex::new(0)),                            //Initializes cache size
@@ -363,7 +379,7 @@ impl WebServer {
     // TODO: Smarter Scheduling.
     fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, 
        stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
-       req_queue_arc: Arc<Mutex<PriorityQueue<HTTP_Request>>>, notify_chan: Sender<()>) {
+       req_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
         let mut stream = stream;
         let peer_name = WebServer::get_peer_name(&mut stream);
@@ -419,7 +435,7 @@ impl WebServer {
                 // give it back at the end of that block
                 let mut req_queue = req_queue_get.lock().unwrap();
                 if req_queue.len() > 0 {
-                    let req = req_queue.pop();  // Removes request associated with smallest file in queue
+                    let req = req_queue.pop().unwrap();  // Removes request associated with smallest file in queue
                     debug!("A new request dequeued, now the length of queue is {}.", req_queue.len());
                     request_tx.send(req);
                 }
