@@ -91,10 +91,11 @@ impl HTTP_Request {
     }
 }
 
+/// Ordering for HTTP_Request states that larger files are 'smaller' i.e. lower in the queue
 impl PartialOrd for HTTP_Request {
     fn partial_cmp(&self, other: &HTTP_Request) -> Option<Ordering> {
         match (self.size, other.size) {
-            (x,y) if x < y => Some(Ordering::Less),
+            (x,y) if x > y => Some(Ordering::Less),
             (x,y) if x == y => Some(Ordering::Equal),
             _ => Some(Ordering::Greater)
         }
