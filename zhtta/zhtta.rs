@@ -76,6 +76,28 @@ struct HTTP_Request {
     //  See issue: https://github.com/mozilla/rust/issues/12139)
     peer_name: String,
     path: Path,
+    size: u64,
+    modified: u64
+}
+
+impl HTTP_Request {
+    /// Constructor for HTTP_Request makes blocking call to system for file statistics
+    fn new(peer_name: String, path: Path) -> HTTP_Request {
+        let stats = path.stats().unwrap();
+
+        HTTP_Request { peer_name: peer_name, path: path, size: stats.size, modified: stats.modified }
+    }
+}
+
+/// Makes HTTP_Requests sortable by size of requested file
+impl Ord for HTTP_Request {
+    fm cmp(&self, other: HTTP_Request) -> Ordering {
+        match (self.size, other.size) {
+            (x,y) if x < y => Ordering::Less,
+            (x,y) if x = y => Ordering::Equal,
+            else => Ordering::Greater
+        }
+    }
 }
 
 /// The cached file struct keeps track of a file as a vector of bytes and its last modified date
@@ -208,6 +230,9 @@ impl WebServer {
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         } else { 
                             debug!("===== Static Page request =====");
+                            // If cached, return page here, single-threaded
+                            // TODO: Handle cached requests here
+                            // Else, enqueue request for multithreaded handling
                             WebServer::enqueue_static_file_request(stream, &path_obj, stream_map_arc, request_queue_arc, notify_chan);
                         }
                     }
@@ -394,16 +419,18 @@ impl WebServer {
                 // give it back at the end of that block
                 let mut req_queue = req_queue_get.lock().unwrap();
                 if req_queue.len() > 0 {
-                    let req = req_queue.remove(0);
+                    let req = req_queue.pop();  // Removes request associated with smallest file in queue
                     debug!("A new request dequeued, now the length of queue is {}.", req_queue.len());
                     request_tx.send(req);
                 }
             }
 
+            // Get request from internal channel
             let request = match request_rx.recv(){
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the request channel! {}", e),
             };
+
             // Get stream from hashmap.
             let (stream_tx, stream_rx) = channel();
             {   // make sure we request the lock inside a block with different scope,
@@ -418,10 +445,6 @@ impl WebServer {
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
             };
-
-            // TODO Respond with cached files here, single-threaded
-            // Means Responder will only handle non-cached files
-            // Remove cache checking from Responder
 
             req_semaphore_arc.acquire();
 
