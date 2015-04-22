@@ -120,6 +120,7 @@ impl Ord for HTTP_Request {
 /// The cached file struct keeps track of a file as a vector of bytes and its last modified date
 struct CachedFile {
     modified: u64,
+    ttl: usize,
     file: Vec<u8>
 }
 
@@ -173,29 +174,39 @@ impl WebServer {
         let www_dir_path_str = self.www_dir_path.clone();
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
+        let file_cache_arc = self.file_cache.clone();
         let stream_map_arc = self.stream_map_arc.clone();
         let visitor_count = self.visitor_count;         //Clone a local copy of visitor_count
 
+
         Builder::new().name("Listener".to_string()).spawn(move|| {
             let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
+           // let cache_a = Arc::file_cache.clone();
 
+            //let xx = Arc::new(Mutex::new(cache_a));
             //Make a mutex wrapped by a reference counter of visitor_count
-            let visitor_count = Arc::new(Mutex::new(visitor_count));        
+            let visitor_count = Arc::new(Mutex::new(visitor_count)); 
             let mut acceptor = listener.listen().unwrap();
             println!("{} listening on {} (serving from: {}).", 
                      SERVER_NAME, addr, www_dir_path_str.as_str().unwrap());
             for stream_raw in acceptor.incoming() {
                 //Make a local copy of the Arc (increases its internal count)
                 let visitor_count = visitor_count.clone();
+                //let file_cache = self.file_cache.clone();
                 let (queue_tx, queue_rx) = channel();
                 queue_tx.send(request_queue_arc.clone());
 
                 let notify_chan = notify_tx.clone();
                 let stream_map_arc = stream_map_arc.clone();
 
+                let file_cache_arc = file_cache_arc.clone();
+
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
-
+                      //  let h = b.clone();
+                  //  let b = cache_a.clone().lock().unwrap();
+                  //  let b = xx.lock().unwrap();
+                   // let x = file_cache_arc.clone().lock();
                     //Acquire lock on visitor_count, block until lock can be held
                     let mut visitor_count = match visitor_count.lock() {
                         Ok(lock) => lock,
@@ -247,16 +258,29 @@ impl WebServer {
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         } else { 
                             debug!("===== Static Page request =====");
-                            // If cached, return page here, single-threaded
-                            // TODO: Handle cached requests here
-                            // Else, enqueue request for multithreaded handling
-                            WebServer::enqueue_static_file_request(stream, &path_obj, stream_map_arc, request_queue_arc, notify_chan);
+
+                            let file_cache = file_cache_arc.lock().unwrap();
+                            let file_path = String::from_str(&path_obj.as_str().unwrap());
+                            //let file_modified = stuff;
+                           // let file_size = stuff;
+                            match file_cache.get(&file_path){
+                                Some(cached_file) => WebServer::respond_with_static_cached_file_request(stream,cached_file),  
+                                None => WebServer::enqueue_static_file_request(stream, &path_obj, stream_map_arc, request_queue_arc, notify_chan),
+                            }     
                         }
                     }
                 });
             }
         });
     }
+
+    fn respond_with_static_cached_file_request(stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
+        let mut stream = stream;
+        stream.write(HTTP_OK.as_bytes());
+        debug!("Responding with file from cache");
+        stream.write(&cached_file.file);
+    }
+
 
     fn respond_with_error_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
         let mut stream = stream;
@@ -282,10 +306,9 @@ impl WebServer {
     /// Adds all files read but not in cache to the cache, with the exception of files too big for
     /// the cache.
     fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
-        cache_size_arc : Arc<Mutex<u64>>, stream: std::old_io::net::tcp::TcpStream, 
+        cache_size_arc : Arc<Mutex<u64>>, mut stream: std::old_io::net::tcp::TcpStream, 
         path: &Path, sem: Arc<Semaphore>) {
 
-        let l_stream = stream;
         let l_file_reader = File::open(path).unwrap();
         let l_file_name = String::from_str(path.as_str().unwrap());
         let l_file_stat = path.stat().unwrap();                         // File stats store file size, modification, etc.
@@ -294,61 +317,30 @@ impl WebServer {
         debug!("Serving static file {}", l_file_name);
 
         Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
-            let mut stream = l_stream;                               // File write stream
             let mut cache = cache_arc.lock().unwrap();               // Locks the cache
             let mut cache_size = cache_size_arc.lock().unwrap();     // Locks the size of the cache
             let mut file_cache = Vec::new();                         // Initializes a new vector of the file to be read
-            let mut cache_flag;                                      // Flag determining if the file was cached
             debug!("Checking cache of size {} for file {}",*cache_size,l_file_name);
 
             stream.write(HTTP_OK.as_bytes());
-            match cache.get(&l_file_name){
-                Some(cached_file) if cached_file.modified >= l_file_last_modified => {
-                    debug!("Cache hit for file {}, last modified {} ms", l_file_name, cached_file.modified);
-                    stream.write(&cached_file.file);
-                    debug!("Cache size at {}", *cache_size);
-                    return;
-                },
-                _ => {
-                    debug!("The file {} modified at {} was not found in the cache", l_file_name, l_file_last_modified);
-                    cache_flag = CACHE_CAPACITY > l_file_size;
-                    match cache_flag {
-                        true if (CACHE_CAPACITY - *cache_size) >= l_file_size => {
-                            debug!("Preparing to cache file {} of size {}", l_file_name, l_file_size);
-                            cache_flag = true;
-                        }
-                        true => {
-                            debug!("Only {} left in cache, not enough to store file {} of size {}, clearing cache...", CACHE_CAPACITY - *cache_size, l_file_name, l_file_size);
-                            file_cache.clear();
-                            *cache_size = 0;
-                            cache_flag = true;
-                        }
-                        false => debug!("Cache of size {} is too small to store file {} of size {}, skipping...", CACHE_CAPACITY, l_file_name, l_file_size)
-                    }
-                    
-                    let mut file_reader = l_file_reader;
-                    let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-                    loop {
-                        match file_reader.read(&mut buf) {
-                            Ok(length) if length==0 => {
-                                break;
-                            },
-                            Ok(_)   => {},                      //Continue if buffer not empty
-                            Err(_)  => break
-                        };
-                        if cache_flag {                         //Adds to buffer if this file is to be cached
-                            file_cache.push_all(&buf);
-                            *cache_size += buf.len() as u64;
-                        }
-                        stream.write(&mut buf);
-                    }
-                                        
-                }
+
+            let mut file_reader = l_file_reader;
+            let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+            loop {
+                match file_reader.read(&mut buf) {
+                    Ok(length) if length==0 => {
+                        break;
+                    },
+                    Ok(_)   => {},                      //Continue if buffer not empty
+                    Err(_)  => break
+                };
+                file_cache.push_all(&buf);
+                *cache_size += buf.len() as u64;
+                stream.write(&mut buf);
             }
-            if cache_flag{
-                debug!("Cached file {} of size {}, cache size {}", l_file_name, l_file_size, *cache_size);
-                cache.insert(String::from_str(&l_file_name), CachedFile{modified: l_file_last_modified, file: file_cache});
-            }
+            
+            debug!("Cached file {} of size {}, cache size {}", l_file_name, l_file_size, *cache_size);
+            cache.insert(String::from_str(&l_file_name), CachedFile{modified: l_file_last_modified, file: file_cache});
             sem.release();          //Releases semaphore
         });
     }
