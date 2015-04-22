@@ -51,16 +51,22 @@ use std::sync::mpsc::channel;
 
 use std::process::{Command, Stdio};
 
+
+
+
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
-const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
-const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
-const CACHE_CAPACITY: u64 = 500000000;  // Size of file cache (bytes)
-
+// Server config
 const IP : &'static str = "127.0.0.1";
 const PORT : usize = 4414;
 const WWW_DIR : &'static str = "./www";
 
+// Tunable parameters
+const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
+const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
+const CACHE_CAPACITY: u64 = 500000000;  // Size of file cache (bytes)
+
+// Static responses
 const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
 const HTTP_BAD : &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
 
@@ -71,23 +77,23 @@ const COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, R
              </style></head>
              <body>";
 
-struct HTTP_Request {
-    // Use peer_name as the key to access TcpStream in hashmap. 
 
-    // (Due to a bug in extra::arc in Rust 0.9, it is very inconvenient to use TcpStream without the "Freeze" bound.
-    //  See issue: https://github.com/mozilla/rust/issues/12139)
-    peer_name: String,
-    path: Path,
-    size: u64,
-    modified: u64
+struct HTTP_Request {
+    peer_name: String,      // Use peer_name as the key to access TcpStream in hashmap. 
+    path: Path,             // Path for the requested file
+    path_string: String,    // String for cache lookup and pretty printing
+    size: u64,              // File size for priority scheduling
+    modified: u64           // Modified date for avoiding cache staleness
 }
 
 impl HTTP_Request {
     /// Constructor for HTTP_Request makes blocking call to system for file statistics
     fn new(peer_name: String, path: Path) -> HTTP_Request {
         let stats = path.stat().unwrap();
+        let path_string = String::from_str(path.as_str().unwrap());
 
-        HTTP_Request { peer_name: peer_name, path: path, size: stats.size, modified: stats.modified }
+        HTTP_Request { peer_name: peer_name, path: path, path_string: path_string, 
+            size: stats.size, modified: stats.modified }
     }
 }
 
@@ -257,14 +263,14 @@ impl WebServer {
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         } else { 
                             debug!("===== Static Page request =====");
+                            // Create an HTTP_Request object for either cache or non-cache serving
+                            let req = HTTP_Request::new( peer_name, path_obj.clone() );
 
                             let file_cache = file_cache_arc.lock().unwrap();
-                            let file_path = String::from_str(&path_obj.as_str().unwrap());
-                            //let file_modified = stuff;
-                           // let file_size = stuff;
-                            match file_cache.get(&file_path){
-                                Some(cached_file) => WebServer::respond_with_static_cached_file_request(stream,cached_file),  
-                                None => WebServer::enqueue_static_file_request(stream, &path_obj, stream_map_arc, request_queue_arc, notify_chan),
+
+                            match file_cache.get(&req.path_string){
+                                Some(cached_file) => WebServer::respond_with_static_cached_file(stream,cached_file),  
+                                None => WebServer::enqueue_static_file_request(stream, req, stream_map_arc, request_queue_arc, notify_chan),
                             }     
                         }
                     }
@@ -273,7 +279,7 @@ impl WebServer {
         });
     }
 
-    fn respond_with_static_cached_file_request(mut stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
+    fn respond_with_static_cached_file(mut stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
         stream.write(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
         stream.write(&cached_file.file);
@@ -305,24 +311,21 @@ impl WebServer {
     /// the cache.
     fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
         cache_size_arc : Arc<Mutex<u64>>, mut stream: std::old_io::net::tcp::TcpStream, 
-        path: &Path, sem: Arc<Semaphore>) {
+        request: HTTP_Request, sem: Arc<Semaphore>) {
 
-        let l_file_reader = File::open(path).unwrap();
-        let l_file_name = String::from_str(path.as_str().unwrap());
-        let l_file_stat = path.stat().unwrap();                         // File stats store file size, modification, etc.
-        let l_file_last_modified = l_file_stat.modified;
-        let l_file_size = l_file_stat.size;
-        debug!("Serving static file {}", l_file_name);
+        let file_reader = File::open(&request.path).unwrap();
+
+        debug!("Serving static file {}", request.path_string);
 
         Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
             let mut cache = cache_arc.lock().unwrap();               // Locks the cache
             let mut cache_size = cache_size_arc.lock().unwrap();     // Locks the size of the cache
-            let mut file_cache = Vec::new();                         // Initializes a new vector of the file to be read
-            debug!("Checking cache of size {} for file {}",*cache_size,l_file_name);
+            let mut file_data = Vec::new();                         // Initializes a new vector of the file to be read
+            debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
             stream.write(HTTP_OK.as_bytes());
 
-            let mut file_reader = l_file_reader;
+            let mut file_reader = file_reader;
             let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             loop {
                 match file_reader.read(&mut buf) {
@@ -332,14 +335,19 @@ impl WebServer {
                     Ok(_)   => {},                      //Continue if buffer not empty
                     Err(_)  => break
                 };
-                file_cache.push_all(&buf);
+                file_data.push_all(&buf);
                 *cache_size += buf.len() as u64;
                 stream.write(&mut buf);
             }
             
-            debug!("Cached file {} of size {}, cache size {}", l_file_name, l_file_size, *cache_size);
-            cache.insert(String::from_str(&l_file_name), CachedFile{modified: l_file_last_modified, file: file_cache});
-            sem.release();          //Releases semaphore
+            debug!("Cached file {} of size {}, cache size {}", request.path_string, request.size, *cache_size);
+            cache.insert(request.path_string, 
+                CachedFile{modified: request.modified, file: file_data});
+
+            sem.release();          //Releases semaphore to allow another Responder thread to spawn
+
+                        // Closes stream automatically.
+            debug!("=====Terminated connection from [{}].=====", request.peer_name);
         });
     }
 
@@ -367,13 +375,10 @@ impl WebServer {
         stream.write(processed_output.as_bytes());
     }
 
-    // TODO: Smarter Scheduling.
-    fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, 
+    fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, req: HTTP_Request, 
        stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
        req_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
-        let mut stream = stream;
-        let peer_name = WebServer::get_peer_name(&mut stream);
         let (stream_tx, stream_rx) = channel();
         stream_tx.send(stream);
         let stream = match stream_rx.recv(){
@@ -385,12 +390,10 @@ impl WebServer {
         {   // make sure we request the lock inside a block with different scope,
             // so that we give it back at the end of that block
             let mut local_stream_map = local_stream_map.lock().unwrap();
-            local_stream_map.insert(peer_name.clone(), stream);
+            local_stream_map.insert(req.peer_name.clone(), stream);
         }
 
-        // Enqueue the HTTP request.
-        // TOCHECK: it was ~path_obj.clone(), make sure in which order are ~ and clone() executed
-        let req = HTTP_Request::new(peer_name.clone(), path_obj.clone());
+        // Enqueue the HTTP request
         let (req_tx, req_rx) = channel();
         req_tx.send(req);
 
@@ -411,12 +414,13 @@ impl WebServer {
         }
     }
 
-    // TODO: Smarter Scheduling.
+    /// Dequeues file request prioritized by smallest file requested
     fn dequeue_static_file_request(&mut self) {
         let req_semaphore_arc = Arc::new(Semaphore::new(REQ_HANDLER_COUNT));
 
         let req_queue_get = self.request_queue_arc.clone();
         let stream_map_get = self.stream_map_arc.clone();
+
         // Receiver<> cannot be sent to another task. So we have to make this task as the main task
         // that can access self.notify_rx.
         let (request_tx, request_rx) = channel();
@@ -443,7 +447,7 @@ impl WebServer {
             {   // make sure we request the lock inside a block with different scope,
                 // so that we give it back at the end of that block
                 let mut stream_map = stream_map_get.lock().unwrap();
-                let stream = stream_map.remove(&request.peer_name).expect("no option tcpstream");
+                let stream = stream_map.remove(&request.peer_name).expect("No option tcpstream found in stream map.");
                 stream_tx.send(stream);
             }
             // TODO: Spawning more tasks to respond the dequeued requests concurrently.
@@ -455,9 +459,8 @@ impl WebServer {
 
             req_semaphore_arc.acquire();
 
-            WebServer::respond_with_static_file(self.file_cache.clone(), self.cache_size.clone(), stream, &request.path, req_semaphore_arc.clone());
-            // Close stream automatically.
-            debug!("=====Terminated connection from [{}].=====", request.peer_name);
+            WebServer::respond_with_static_file(self.file_cache.clone(), self.cache_size.clone(), 
+                stream, request, req_semaphore_arc.clone());
         }
     }
 
