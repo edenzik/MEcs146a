@@ -120,7 +120,6 @@ impl Ord for HTTP_Request {
 /// The cached file struct keeps track of a file as a vector of bytes and its last modified date
 struct CachedFile {
     modified: u64,
-    ttl: usize,
     file: Vec<u8>
 }
 
@@ -274,8 +273,7 @@ impl WebServer {
         });
     }
 
-    fn respond_with_static_cached_file_request(stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
-        let mut stream = stream;
+    fn respond_with_static_cached_file_request(mut stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
         stream.write(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
         stream.write(&cached_file.file);
