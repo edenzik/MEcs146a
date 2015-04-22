@@ -51,9 +51,9 @@ use std::process::{Command, Stdio};
 
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
-const REQ_HANDLER_COUNT : isize = 20;    // Max number of file request handler threads
-const BUFFER_SIZE : usize = 512;        //Size of file buffer to send (bytes)
-const CACHE_CAPACITY: u64 = 500000000;   //Size of file cache (bytes)
+const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
+const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
+const CACHE_CAPACITY: u64 = 500000000;  // Size of file cache (bytes)
 
 const IP : &'static str = "127.0.0.1";
 const PORT : usize = 4414;
@@ -78,15 +78,15 @@ struct HTTP_Request {
     path: Path,
 }
 
-///The cached file struct keeps track of a file as a vector of bytes and its last modified date
+/// The cached file struct keeps track of a file as a vector of bytes and its last modified date
 struct CachedFile {
     modified: u64,
     file: Vec<u8>
 }
 
-///Web server struct stores properties of the web server, such as the counter, the IP, the port,
-///directory path, and others.
-///The file caches is kept as a HashMap of (file path) -> (CachedFile struct)
+/// Web server struct stores properties of the web server, such as the counter, the IP, the port,
+/// directory path, and others.
+/// The file caches is kept as a HashMap of (file path) -> (CachedFile struct)
 struct WebServer {
     ip: String,
     port: usize,
@@ -156,19 +156,23 @@ impl WebServer {
 
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
+
                     //Acquire lock on visitor_count, block until lock can be held
                     let mut visitor_count = match visitor_count.lock() {
                         Ok(lock) => lock,
                         Err(_) => panic!("Error getting lock for visit count."),
                     };
                     *visitor_count += 1;      //Increment visitor_count
+
                     let request_queue_arc = queue_rx.recv().unwrap();
+
                     let mut stream = match stream_raw {
                         Ok(s) => {s}
                         Err(e) => { panic!("Error getting the listener stream! {}", e) }
                     };
                     let peer_name = WebServer::get_peer_name(&mut stream);
                     debug!("Got connection from {}", peer_name);
+
                     let mut buf: [u8;500] = [0;500];
                     stream.read(&mut buf);
                     let request_str = match str::from_utf8(&buf){
@@ -176,6 +180,7 @@ impl WebServer {
                         Err(e)=> panic!("Error reading from the listener stream! {}", e),
                     };
                     debug!("Request:\n{}", request_str);
+
                     let req_group: Vec<&str> = request_str.splitn(3, ' ').collect();
                     if req_group.len() > 2 {
                         let path_str = ".".to_string() + req_group[1];
@@ -231,24 +236,29 @@ impl WebServer {
     /// Initializes a buffer, writes BUFFER_SIZE segments of file to that buffer
     /// Implements file caching using a HashMap, with the file path as the key.
     /// Serves static file as live streams, reading off a chunk of a file and sending it to a
-    /// client
+    /// client.
     /// Adds all files read but not in cache to the cache, with the exception of files too big for
     /// the cache.
-    fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>, cache_size_arc : Arc<Mutex<u64>>, stream: std::old_io::net::tcp::TcpStream, path: &Path, sem: Arc<Semaphore>) {
+    fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
+        cache_size_arc : Arc<Mutex<u64>>, stream: std::old_io::net::tcp::TcpStream, 
+        path: &Path, sem: Arc<Semaphore>) {
+
         let l_stream = stream;
         let l_file_reader = File::open(path).unwrap();
         let l_file_name = String::from_str(path.as_str().unwrap());
-        let l_file_stat = path.stat().unwrap();                         //File stats store file size, modification, etc.
+        let l_file_stat = path.stat().unwrap();                         // File stats store file size, modification, etc.
         let l_file_last_modified = l_file_stat.modified;
         let l_file_size = l_file_stat.size;
         debug!("Serving static file {}", l_file_name);
-        Builder::new().name("Responder".to_string()).spawn(move|| {     //Builds threads
-            let mut stream = l_stream;                                  //File write stream
-            let mut cache = cache_arc.lock().unwrap();                  //Locks the cache
-            let mut cache_size = cache_size_arc.lock().unwrap();        //Locks the size of the cache
-            let mut file_cache = Vec::new();                            //Initializes a new vector of the file to be read
-            let mut cache_flag;                                           //Flag determining if the file was cached
+
+        Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
+            let mut stream = l_stream;                               // File write stream
+            let mut cache = cache_arc.lock().unwrap();               // Locks the cache
+            let mut cache_size = cache_size_arc.lock().unwrap();     // Locks the size of the cache
+            let mut file_cache = Vec::new();                         // Initializes a new vector of the file to be read
+            let mut cache_flag;                                      // Flag determining if the file was cached
             debug!("Checking cache of size {} for file {}",*cache_size,l_file_name);
+
             stream.write(HTTP_OK.as_bytes());
             match cache.get(&l_file_name){
                 Some(cached_file) if cached_file.modified >= l_file_last_modified => {
@@ -327,44 +337,47 @@ impl WebServer {
 
     // TODO: Smarter Scheduling.
     fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, path_obj: &Path, 
-                                   stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
-                                   req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
-                                       // Save stream in hashmap for later response.
-                                       let mut stream = stream;
-                                       let peer_name = WebServer::get_peer_name(&mut stream);
-                                       let (stream_tx, stream_rx) = channel();
-                                       stream_tx.send(stream);
-                                       let stream = match stream_rx.recv(){
-                                           Ok(s) => s,
-                                           Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
-                                       };
-                                       let local_stream_map = stream_map_arc.clone();
-                                       {   // make sure we request the lock inside a block with different scope,
-                                           // so that we give it back at the end of that block
-                                           let mut local_stream_map = local_stream_map.lock().unwrap();
-                                           local_stream_map.insert(peer_name.clone(), stream);
-                                       }
+       stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
+       req_queue_arc: Arc<Mutex<Vec<HTTP_Request>>>, notify_chan: Sender<()>) {
+        // Save stream in hashmap for later response.
+        let mut stream = stream;
+        let peer_name = WebServer::get_peer_name(&mut stream);
+        let (stream_tx, stream_rx) = channel();
+        stream_tx.send(stream);
+        let stream = match stream_rx.recv(){
+           Ok(s) => s,
+           Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
+        };
 
-                                       // Enqueue the HTTP request.
-                                       // TOCHECK: it was ~path_obj.clone(), make sure in which order are ~ and clone() executed
-                                       let req = HTTP_Request { peer_name: peer_name.clone(), path: path_obj.clone() };
-                                       let (req_tx, req_rx) = channel();
-                                       req_tx.send(req);
-                                       debug!("Waiting for queue mutex lock.");
+        let local_stream_map = stream_map_arc.clone();
+        {   // make sure we request the lock inside a block with different scope,
+            // so that we give it back at the end of that block
+            let mut local_stream_map = local_stream_map.lock().unwrap();
+            local_stream_map.insert(peer_name.clone(), stream);
+        }
 
-                                       let local_req_queue = req_queue_arc.clone();
-                                       {   // make sure we request the lock inside a block with different scope, 
-                                           // so that we give it back at the end of that block
-                                           let mut local_req_queue = local_req_queue.lock().unwrap();
-                                           let req: HTTP_Request = match req_rx.recv(){
-                                               Ok(s) => s,
-                                               Err(e) => panic!("There was an error while receiving from the request channel! {}", e),
-                                           };
-                                           local_req_queue.push(req);
-                                           debug!("A new request enqueued, now the length of queue is {}.", local_req_queue.len());
-                                           notify_chan.send(()); // Send incoming notification to responder task. 
-                                       }
-                                   }
+        // Enqueue the HTTP request.
+        // TOCHECK: it was ~path_obj.clone(), make sure in which order are ~ and clone() executed
+        let req = HTTP_Request { peer_name: peer_name.clone(), path: path_obj.clone() };
+        let (req_tx, req_rx) = channel();
+        req_tx.send(req);
+
+        debug!("Waiting for queue mutex lock.");
+
+        let local_req_queue = req_queue_arc.clone();
+        {   // make sure we request the lock inside a block with different scope, 
+            // so that we give it back at the end of that block
+            let mut local_req_queue = local_req_queue.lock().unwrap();
+            let req: HTTP_Request = match req_rx.recv(){
+                Ok(s) => s,
+                Err(e) => panic!("There was an error while receiving from the request channel! {}", e),
+            };
+            local_req_queue.push(req);
+            debug!("A new request enqueued, now the length of queue is {}.", local_req_queue.len());
+
+            notify_chan.send(()); // Send incoming notification to responder task. 
+        }
+    }
 
     // TODO: Smarter Scheduling.
     fn dequeue_static_file_request(&mut self) {
@@ -405,6 +418,10 @@ impl WebServer {
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
             };
+
+            // TODO Respond with cached files here, single-threaded
+            // Means Responder will only handle non-cached files
+            // Remove cache checking from Responder
 
             req_semaphore_arc.acquire();
 
