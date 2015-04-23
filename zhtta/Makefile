@@ -8,6 +8,9 @@ setup:
 
 all: $(PROGRAM_NAME)
 
+build:
+	rustc $(PROGRAM_NAME).rs
+
 $(PROGRAM_NAME): $(PROGRAM_NAME).rs
 	rustc $(PROGRAM_NAME).rs
 
