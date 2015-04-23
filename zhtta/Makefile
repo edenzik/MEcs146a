@@ -23,7 +23,6 @@ $(PROGRAM_NAME): $(PROGRAM_NAME).rs $(SHELL_NAME)
 	rustc $(PROGRAM_NAME).rs
 
 clean :
-	$(RM) $(ROOT)/*.bin
 	$(RM) $(SHELL_NAME)
 	$(RM) $(PROGRAM_NAME)
     
@@ -45,5 +44,10 @@ generate: $(ROOT)
 
 test:
 	httperf --server localhost --port ${PORT} --rate ${RATE} --num-conns ${CONNS} --wlog=n,./zhtta-test-NUL.txt
+
+curl_test:
+	time curl localhost:4414/40M.bin > /dev/null
+	time curl localhost:4414/10M.bin > /dev/null
+	time curl localhost:4414/20M.bin > /dev/null
 
 

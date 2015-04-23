@@ -26,7 +26,7 @@ const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 // Tunable parameters
 const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
 const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
-const CACHE_CAPACITY: u64 = 5000000;  // Size of file cache (bytes)
+const CACHE_CAPACITY: usize = 61000000;  // Size of file cache (bytes)
 
 // Static responses
 const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
