@@ -237,7 +237,7 @@ impl WebServer {
             let mut file_data = Vec::new();                          // Initializes a new vector of the file to be read
             debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
-            stream.write(HTTP_OK.as_bytes());
+            stream.write_all(HTTP_OK.as_bytes());
 
             let mut file_reader = file_reader;
             let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];

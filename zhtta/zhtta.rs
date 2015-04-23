@@ -30,7 +30,7 @@
 extern crate log;
 extern crate libc;
 
-use std::os;
+use std::env;
 // use std::old_path::posix::Path;
 use std::borrow::ToOwned;
 // use std::old_io::fs::PathExtensions;
@@ -59,8 +59,8 @@ fn get_args() -> (String, usize, String) {
     }
 
     // Begin processing program arguments and initiate the parameters.
-    let args = os::args();
-    let program = args[0].clone();
+    let mut args = env::args();
+    let program = args.next().unwrap();
 
     let opts = [
         getopts::optopt("", "ip", "The IP address to bind to", "IP"),
@@ -69,7 +69,7 @@ fn get_args() -> (String, usize, String) {
         getopts::optflag("h", "help", "Display help"),
         ];
 
-    let matches = match getopts::getopts(args.tail(), &opts) {
+    let matches = match getopts::getopts(&args.collect::<Vec<_>>(), &opts) {
         Ok(m) => { m }
         Err(f) => { panic!(f.to_err_msg()) }
     };
