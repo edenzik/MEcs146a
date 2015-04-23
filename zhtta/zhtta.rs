@@ -30,9 +30,7 @@ extern crate log;
 extern crate libc;
 
 use std::env;
-// use std::old_path::posix::Path;
 use std::borrow::ToOwned;
-// use std::old_io::fs::PathExtensions;
 
 extern crate getopts;
 use getopts::{optopt, getopts};
