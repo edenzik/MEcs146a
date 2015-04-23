@@ -63,7 +63,7 @@ fn external_command(comment : &str) -> String{          // Iterates through a co
 /// Runs external command and returns the output
 fn execute_gash(command_string : &str) -> String {
     let args: &[_] = &["-c", &command_string];
-    let cmd = match Command::new("./gash").args(args).stdout(Stdio::capture()).output() {
+    let cmd = match Command::new("../gash").args(args).stdout(Stdio::capture()).output() {
         Ok(c) => c,
         Err(_) => {
             debug!("ERROR: failed to spawn gash command to handle dynamic content, is gash binary present at top level directory?");
