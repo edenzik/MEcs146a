@@ -39,6 +39,7 @@ use web_server::WebServer;
 
 mod http_request;
 mod external_cmd;
+mod server_file_cache;
 
 // Server config
 const IP : &'static str = "127.0.0.1";

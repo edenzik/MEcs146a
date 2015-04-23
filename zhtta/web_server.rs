@@ -18,6 +18,7 @@ use std::collections::BinaryHeap;
 use std::collections::hash_map::HashMap;
 
 use http_request::HTTPRequest;
+use server_file_cache::{ServerFileCache, CachedFile};
 use external_cmd;
 
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
@@ -25,7 +26,7 @@ const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 // Tunable parameters
 const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
 const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
-const CACHE_CAPACITY: u64 = 500000000;  // Size of file cache (bytes)
+const CACHE_CAPACITY: u64 = 5000000;  // Size of file cache (bytes)
 
 // Static responses
 const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
@@ -38,11 +39,6 @@ const COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, R
              </style></head>
              <body>";
 
-/// The cached file struct keeps track of a file as a vector of bytes and its last modified date
-struct CachedFile {
-    modified: u64,
-    file: Vec<u8>
-}
 
 /// Web server struct stores properties of the web server, such as the counter, the IP, the port,
 /// directory path, and others.
@@ -55,8 +51,7 @@ pub struct WebServer {
 
     request_queue_arc: Arc<Mutex<BinaryHeap<HTTPRequest>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>,
-    file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             // A HashMap of file caches 
-    cache_size: Arc<Mutex<u64>>,                                    // Keeps track of cache size
+    server_file_cache: Arc<Mutex<ServerFileCache>>,             // A HashMap of file caches 
 
     notify_rx: Receiver<()>,
     notify_tx: Sender<()>
@@ -76,9 +71,7 @@ impl WebServer {
 
             request_queue_arc: Arc::new(Mutex::new(BinaryHeap::new())),
             stream_map_arc: Arc::new(Mutex::new(HashMap::new())),
-            file_cache: Arc::new(Mutex::new(HashMap::new())),               // Initializes file cache
-            cache_size: Arc::new(Mutex::new(0)),                            // Initializes cache size
-
+            server_file_cache: Arc::new(Mutex::new(ServerFileCache::new(CACHE_CAPACITY))),               // Initializes file cache
             notify_rx: notify_rx,
             notify_tx: notify_tx,
         }
@@ -94,7 +87,7 @@ impl WebServer {
         let www_dir_path_str = self.www_dir_path.clone();
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
-        let file_cache_arc = self.file_cache.clone();
+        let server_file_cache_arc = self.server_file_cache.clone();
         let stream_map_arc = self.stream_map_arc.clone();
         let visitor_count = self.visitor_count;         // Clone a local copy of visitor_count
 
@@ -117,7 +110,8 @@ impl WebServer {
                 let notify_chan = notify_tx.clone();
                 let stream_map_arc = stream_map_arc.clone();
 
-                let file_cache_arc = file_cache_arc.clone();
+
+                let server_file_cache_arc = server_file_cache_arc.clone();
 
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
@@ -178,14 +172,12 @@ impl WebServer {
                         } else { 
                             debug!("===== Static Page request =====");
                             // Create an HTTPRequest object for either cache or non-cache serving
-                            let req = HTTPRequest::new( peer_name, path_obj.clone() );
-
-                            let file_cache = file_cache_arc.lock().unwrap();
-
-                            match file_cache.get(&req.path_string){
-                                Some(cached_file) => WebServer::respond_with_static_cached_file(stream,cached_file),  
-                                None => WebServer::enqueue_static_file_request(stream, req, stream_map_arc, request_queue_arc, notify_chan),
-                            }     
+                            let request = HTTPRequest::new( peer_name, path_obj.clone() );
+                            let server_file_cache = server_file_cache_arc.lock().unwrap();
+                            match server_file_cache.get(request.path_string(), request.modified()){
+                                Some(cached_file) => WebServer::respond_with_static_cached_file(stream,cached_file),
+                                None => WebServer::enqueue_static_file_request(stream, request, stream_map_arc, request_queue_arc, notify_chan)
+                            }
                         }
                     }
                 });
@@ -196,7 +188,7 @@ impl WebServer {
     fn respond_with_static_cached_file(mut stream: TcpStream, cached_file: &CachedFile) {
         stream.write_all(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
-        stream.write_all(&cached_file.file);
+        stream.write_all(&cached_file.content());
     }
 
 
@@ -223,19 +215,17 @@ impl WebServer {
     /// client.
     /// Adds all files read but not in cache to the cache, with the exception of files too big for
     /// the cache.
-    fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
-        cache_size_arc : Arc<Mutex<u64>>, mut stream: TcpStream, 
+    fn respond_with_static_file(server_file_cache_arc: Arc<Mutex<ServerFileCache>>, mut stream: TcpStream, 
         request: HTTPRequest, sem: Arc<Semaphore>) {
 
         let file_reader = File::open(&request.path).unwrap();
 
-        debug!("Serving static file {}", request.path_string);
+        debug!("Serving static file from disk {}", request.path_string);
 
         Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
-            let mut cache = cache_arc.lock().unwrap();               // Locks the cache
-            let mut cache_size = cache_size_arc.lock().unwrap();     // Locks the size of the cache
-            let mut file_data = Vec::new();                          // Initializes a new vector of the file to be read
-            debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
+            let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
+            let mut file_content = Vec::new();                          // Initializes a new vector of the file to be read
+           // debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
             stream.write_all(HTTP_OK.as_bytes());
 
@@ -247,15 +237,12 @@ impl WebServer {
                     Ok(_)   => {},                      // Continue if buffer not empty
                     Err(_)  => break
                 };
-                file_data.push_all(&buf);
-                *cache_size += buf.len() as u64;
+                file_content.push_all(&buf);
                 stream.write_all(&mut buf);
             }
             
-            debug!("Cached file {} of size {}, cache size {}", request.path_string, request.size, *cache_size);
-            cache.insert(request.path_string, 
-                CachedFile{modified: request.modified, file: file_data});
-
+            //debug!("Cached file {} of size {}, cache size {}", request.path_string, request.size, *cache_size);
+            server_file_cache.insert(request.path_string(), request.modified, file_content);
             sem.release();          // Releases semaphore to allow another Responder thread to spawn
 
             // Closes stream automatically.
@@ -370,7 +357,7 @@ impl WebServer {
             // Semaphore ensures that we do not serve too many concurrent requests
             req_semaphore_arc.acquire();
 
-            WebServer::respond_with_static_file(self.file_cache.clone(), self.cache_size.clone(), 
+            WebServer::respond_with_static_file(self.server_file_cache.clone(), 
                 stream, request, req_semaphore_arc.clone());
         }
     }

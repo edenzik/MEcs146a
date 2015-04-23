@@ -19,6 +19,14 @@ impl HTTPRequest {
         HTTPRequest { peer_name: peer_name, path: path, path_string: path_string, 
             size: stats.size, modified: stats.modified }
     }
+
+    pub fn path_string(&self) -> String{
+        self.path_string.clone()
+    }
+
+    pub fn modified(&self) -> u64{
+        self.modified
+    }
 }
 
 /// Ordering for HTTPRequest states that larger files are 'smaller' i.e. lower in the queue
