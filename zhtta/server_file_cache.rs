@@ -1,14 +1,14 @@
 use std::collections::hash_map::HashMap;
 use std::collections::VecDeque;
 
-const LOAD_FACTOR : usize = 20;  /// Default initial allocated size of the HashMap used to store the cache. Increase for more pre-allocation and less overhead.
+const LOAD_FACTOR : usize = 20;  /// Default initial allocated size of the HashMap used for the cache. Increase for more pre-allocation and less overhead.
 
 /// Server File Cache structure keeps track of all the files in a map
 pub struct ServerFileCache {
     path_string_to_cached_file: HashMap<String,CachedFile>,
-    ttl_queue: VecDeque<String>,
-    capacity: usize,
-    size: usize
+    ttl_queue: VecDeque<String>,        // Time to live queue for each path
+    capacity: usize,                    // Capacity of the cache
+    size: usize                         // The current size of the cache
 }
 
 /// The cached file struct keeps track of a file as a vector of bytes and its last modified date
@@ -124,7 +124,8 @@ impl ServerFileCache {
             None => 0
         }
     }
-
+    
+    /// Frees space in the cache by the space_to_free parameter
     fn free(&mut self, space_to_free : usize){
         debug!("FREE Start: Freeing {} of space", space_to_free);
         for _ in 0..self.ttl_queue.len(){
