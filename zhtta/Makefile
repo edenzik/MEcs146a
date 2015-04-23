@@ -1,4 +1,5 @@
 PROGRAM_NAME = zhtta
+SHELL_NAME = gash
 PORT = 4414
 CONNS = 60
 RATE = 60
@@ -9,12 +10,17 @@ setup:
 all: $(PROGRAM_NAME)
 
 build:
-	rustc $(PROGRAM_NAME).rs
+	$(PROGRAM_NAME)
+	
 
-$(PROGRAM_NAME): $(PROGRAM_NAME).rs
+$(SHELL_NAME): $(SHELL_NAME).rs
+	rustc $(SHELL_NAME).rs
+
+$(PROGRAM_NAME): $(PROGRAM_NAME).rs $(SHELL_NAME)
 	rustc $(PROGRAM_NAME).rs
 
 clean :
+	$(RM) $(SHELL_NAME)
 	$(RM) $(PROGRAM_NAME)
     
 run: ${PROGRAM_NAME}
