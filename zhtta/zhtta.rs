@@ -19,21 +19,21 @@
 #![feature(old_io)]
 #![feature(old_path)]
 #![feature(os)]
+#![feature(env)]
 #![feature(core)]
 #![feature(collections)]
 #![feature(process)]
 #![feature(std_misc)]
 #![allow(non_camel_case_types)]
 #![allow(unused_must_use)]
-#![allow(deprecated)]
 #[macro_use]
 extern crate log;
 extern crate libc;
 
-use std::{os, str};
-use std::old_path::posix::Path;
+use std::os;
+// use std::old_path::posix::Path;
 use std::borrow::ToOwned;
-use std::old_io::fs::PathExtensions;
+// use std::old_io::fs::PathExtensions;
 
 extern crate getopts;
 use getopts::{optopt, getopts};

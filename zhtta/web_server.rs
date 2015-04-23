@@ -3,10 +3,14 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 
 use std::thread::Builder;
-use std::{os, str};
+use std::{env, os, str};
 
 use std::old_io::File;
-use std::old_io::{Acceptor, Listener};
+use std::old_io::{ Acceptor, Listener, TcpListener };
+use std::old_io::fs::PathExtensions;
+use std::old_io::net::tcp::TcpStream;
+
+use std::old_path::posix::Path;
 
 use std::io::Read;
 
@@ -50,7 +54,7 @@ pub struct WebServer {
     visitor_count: usize,
 
     request_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>,
-    stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
+    stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>,
     file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             // A HashMap of file caches 
     cache_size: Arc<Mutex<u64>>,                                    // Keeps track of cache size
 
@@ -62,7 +66,7 @@ impl WebServer {
     pub fn new(ip: String, port: usize, www_dir: String) -> WebServer {
         let (notify_tx, notify_rx) = channel();
         let www_dir_path = Path::new(www_dir);
-        os::change_dir(&www_dir_path);
+        env::set_current_dir(&www_dir_path);
 
         WebServer {
             ip:ip,
@@ -96,7 +100,7 @@ impl WebServer {
 
 
         Builder::new().name("Listener".to_string()).spawn(move|| {
-            let listener = std::old_io::TcpListener::bind(addr.as_slice()).unwrap();
+            let listener = TcpListener::bind(addr.as_slice()).unwrap();
 
             // Make a mutex wrapped by a reference counter of visitor_count
             let visitor_count = Arc::new(Mutex::new(visitor_count)); 
@@ -189,21 +193,21 @@ impl WebServer {
         });
     }
 
-    fn respond_with_static_cached_file(mut stream: std::old_io::net::tcp::TcpStream, cached_file: &CachedFile) {
+    fn respond_with_static_cached_file(mut stream: TcpStream, cached_file: &CachedFile) {
         stream.write(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
         stream.write(&cached_file.file);
     }
 
 
-    fn respond_with_error_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
+    fn respond_with_error_page(stream: TcpStream, path: &Path) {
         let mut stream = stream;
         let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
         stream.write(HTTP_BAD.as_bytes());
         stream.write(msg.as_bytes());
     }
 
-    fn respond_with_counter_page(stream: std::old_io::net::tcp::TcpStream, visitor_count: usize) {
+    fn respond_with_counter_page(stream: TcpStream, visitor_count: usize) {
         let mut stream = stream;
         let response: String = 
             format!("{}{}<h1>Greetings, Krusty!</h1><h2>Visitor count: {}</h2></body></html>\r\n", 
@@ -220,7 +224,7 @@ impl WebServer {
     /// Adds all files read but not in cache to the cache, with the exception of files too big for
     /// the cache.
     fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
-        cache_size_arc : Arc<Mutex<u64>>, mut stream: std::old_io::net::tcp::TcpStream, 
+        cache_size_arc : Arc<Mutex<u64>>, mut stream: TcpStream, 
         request: HTTP_Request, sem: Arc<Semaphore>) {
 
         let file_reader = File::open(&request.path).unwrap();
@@ -260,7 +264,7 @@ impl WebServer {
     }
 
     // Server-side gashing.
-    fn respond_with_dynamic_page(stream: std::old_io::net::tcp::TcpStream, path: &Path) {
+    fn respond_with_dynamic_page(stream: TcpStream, path: &Path) {
         let mut stream = stream;
         // Open file for dynamic content
         let mut file_reader = match File::open(path) {
@@ -283,8 +287,8 @@ impl WebServer {
         stream.write(processed_output.as_bytes());
     }
 
-    fn enqueue_static_file_request(stream: std::old_io::net::tcp::TcpStream, req: HTTP_Request, 
-       stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>, 
+    fn enqueue_static_file_request(stream: TcpStream, req: HTTP_Request, 
+       stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>, 
        req_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
         let (stream_tx, stream_rx) = channel();
@@ -371,7 +375,7 @@ impl WebServer {
         }
     }
 
-    fn get_peer_name(stream: &mut std::old_io::net::tcp::TcpStream) -> String{
+    fn get_peer_name(stream: &mut TcpStream) -> String{
         match stream.peer_name(){
             Ok(s) => {format!("{}:{}", s.ip, s.port)}
             Err(e) => {panic!("Error while getting the stream name! {}", e)}
