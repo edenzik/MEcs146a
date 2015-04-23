@@ -3,7 +3,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 
 use std::thread::Builder;
-use std::{env, os, str};
+use std::{env, str};
 
 use std::old_io::File;
 use std::old_io::{ Acceptor, Listener, TcpListener };
@@ -153,7 +153,7 @@ impl WebServer {
                     let req_group: Vec<&str> = request_str.splitn(3, ' ').collect();
                     if req_group.len() > 2 {
                         let path_str = ".".to_string() + req_group[1];
-                        let mut path_obj = os::getcwd().unwrap();
+                        let mut path_obj = env::current_dir().unwrap();
                         path_obj.push(path_str.clone());
                         let ext_str = match path_obj.extension_str() {
                             Some(e) => e,
@@ -194,17 +194,17 @@ impl WebServer {
     }
 
     fn respond_with_static_cached_file(mut stream: TcpStream, cached_file: &CachedFile) {
-        stream.write(HTTP_OK.as_bytes());
+        stream.write_all(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
-        stream.write(&cached_file.file);
+        stream.write_all(&cached_file.file);
     }
 
 
     fn respond_with_error_page(stream: TcpStream, path: &Path) {
         let mut stream = stream;
         let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
-        stream.write(HTTP_BAD.as_bytes());
-        stream.write(msg.as_bytes());
+        stream.write_all(HTTP_BAD.as_bytes());
+        stream.write_all(msg.as_bytes());
     }
 
     fn respond_with_counter_page(stream: TcpStream, visitor_count: usize) {
@@ -214,7 +214,7 @@ impl WebServer {
                     HTTP_OK, COUNTER_STYLE, 
                     visitor_count);     //print visitor count
         debug!("Responding to counter request");
-        stream.write(response.as_bytes());
+        stream.write_all(response.as_bytes());
     }
 
     /// Initializes a buffer, writes BUFFER_SIZE segments of file to that buffer
@@ -249,7 +249,7 @@ impl WebServer {
                 };
                 file_data.push_all(&buf);
                 *cache_size += buf.len() as u64;
-                stream.write(&mut buf);
+                stream.write_all(&mut buf);
             }
             
             debug!("Cached file {} of size {}, cache size {}", request.path_string, request.size, *cache_size);
@@ -271,7 +271,7 @@ impl WebServer {
             Ok(file) => file,
             Err(_) => panic!("Error opening dynamic page file."),
         };
-        stream.write(HTTP_OK.as_bytes());
+        stream.write_all(HTTP_OK.as_bytes());
         // Read file as bytes
         let file_content_bytes = match file_reader.read_to_end() {
             Ok(bytes) => bytes,
@@ -284,7 +284,7 @@ impl WebServer {
         };
         // Process dynamic content and write to output stream
         let processed_output = process(file_content.as_slice());
-        stream.write(processed_output.as_bytes());
+        stream.write_all(processed_output.as_bytes());
     }
 
     fn enqueue_static_file_request(stream: TcpStream, req: HTTP_Request, 

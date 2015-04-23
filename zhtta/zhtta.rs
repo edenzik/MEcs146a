@@ -18,7 +18,6 @@
 #![feature(io)]
 #![feature(old_io)]
 #![feature(old_path)]
-#![feature(os)]
 #![feature(env)]
 #![feature(core)]
 #![feature(collections)]
@@ -71,7 +70,7 @@ fn get_args() -> (String, usize, String) {
 
     let matches = match getopts::getopts(&args.collect::<Vec<_>>(), &opts) {
         Ok(m) => { m }
-        Err(f) => { panic!(f.to_err_msg()) }
+        Err(f) => { panic!("{:?}", f) }
     };
 
     if matches.opt_present("h") || matches.opt_present("help") {
