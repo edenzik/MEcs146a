@@ -250,7 +250,7 @@ impl WebServer {
 
                         if path_str.as_slice().eq("./")  {
                             debug!("===== Counter Page request =====");
-                            WebServer::respond_with_counter_page(stream, this_count);     //Pass by value visitor count
+                            WebServer::respond_with_counter_page(stream, this_count);
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         }  else if !path_obj.exists() || path_obj.is_dir() {
                             debug!("===== Error page request =====");
@@ -319,7 +319,7 @@ impl WebServer {
         Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
             let mut cache = cache_arc.lock().unwrap();               // Locks the cache
             let mut cache_size = cache_size_arc.lock().unwrap();     // Locks the size of the cache
-            let mut file_data = Vec::new();                         // Initializes a new vector of the file to be read
+            let mut file_data = Vec::new();                          // Initializes a new vector of the file to be read
             debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
             stream.write(HTTP_OK.as_bytes());
@@ -328,10 +328,8 @@ impl WebServer {
             let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             loop {
                 match file_reader.read(&mut buf) {
-                    Ok(length) if length==0 => {
-                        break;
-                    },
-                    Ok(_)   => {},                      //Continue if buffer not empty
+                    Ok(length) if length==0 => break,
+                    Ok(_)   => {},                      // Continue if buffer not empty
                     Err(_)  => break
                 };
                 file_data.push_all(&buf);
@@ -343,9 +341,9 @@ impl WebServer {
             cache.insert(request.path_string, 
                 CachedFile{modified: request.modified, file: file_data});
 
-            sem.release();          //Releases semaphore to allow another Responder thread to spawn
+            sem.release();          // Releases semaphore to allow another Responder thread to spawn
 
-                        // Closes stream automatically.
+            // Closes stream automatically.
             debug!("=====Terminated connection from [{}].=====", request.peer_name);
         });
     }
@@ -449,13 +447,12 @@ impl WebServer {
                 let stream = stream_map.remove(&request.peer_name).expect("No option tcpstream found in stream map.");
                 stream_tx.send(stream);
             }
-            // TODO: Spawning more tasks to respond the dequeued requests concurrently.
-            // You may need a semophore to control the concurrency.
             let stream = match stream_rx.recv(){
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the stream channel! {}", e),
             };
 
+            // Semaphore ensures that we do not serve too many concurrent requests
             req_semaphore_arc.acquire();
 
             WebServer::respond_with_static_file(self.file_cache.clone(), self.cache_size.clone(), 
@@ -480,7 +477,7 @@ fn get_args() -> (String, usize, String) {
         println!("-h --help \tUsage");
     }
 
-    /* Begin processing program arguments and initiate the parameters. */
+    // Begin processing program arguments and initiate the parameters.
     let args = os::args();
     let program = args[0].clone();
 
@@ -532,12 +529,13 @@ fn main() {
 
 /// Fill page with dynamically requested content by parsing comment syntax.
 fn process_external_commands(source : &str) -> String {
-    let mut start = source.match_indices("<!--");       //indexes of all comment start sequences
-    let mut end = source.match_indices("-->");          //indexes of all comment end sequences
+    let mut start = source.match_indices("<!--");       // indexes of all comment start sequences
+    let mut end = source.match_indices("-->");          // indexes of all comment end sequences
 
-    let mut ranges = Vec::new();                        //index of all comment ranges
+    let mut ranges = Vec::new();                        // index of all comment ranges
 
-    loop {                                             //Iterate over starts and end sequences, add their beginning and end to ranges as pair (start,end)
+    loop {                                             
+        // Iterate over starts and end sequences, add their beginning and end to ranges as pair (start,end)
         match start.next(){
             Some((head,_)) => match end.next(){
                 Some((_,tail)) => ranges.push((head,tail)),
@@ -550,31 +548,32 @@ fn process_external_commands(source : &str) -> String {
         }
     }
 
-    let mut output = String::new();                        //Resulting output
+    let mut output = String::new();                     // Resulting output
 
-    let mut temp_index = 0;                             //Temporary index
+    let mut temp_index = 0;                             // Temporary index
 
-    for range in ranges{                                //Iterate over ranges
+    for range in ranges{                                // Iterate over ranges
         match range {
             (start,end) if start<end => {
                 output.push_str(&source[temp_index .. start]);
                 output.push_str(&external_command(&source[start .. end]));
                 temp_index = end;
             },
-            (_,end)   =>  {                                   //A parsing error occurred, abort and return the original HTML for security
+            (_,end)   =>  {                                   
+                //vA parsing error occurred, abort and return the original HTML for security
                 debug!("BAD PARSE: Dangling end comment string at position {}",end);
                 return String::from_str(source);
             }
         }        
     }
-    output.push_str(&source[temp_index .. ]);               //Push the dangling end of the string
+    output.push_str(&source[temp_index .. ]);               // Push the dangling end of the string
     output
 }
 
-///Parses comment string with a command in it. Returns comment string verbatim if command not
-///found, otherwise parses command and passes it to execute gash which carries it out.
-fn external_command(comment : &str) -> String{          //Iterates through a comment
-    match comment.match_indices("#exec cmd=\"").next(){     //Finds index of command execution, if exists
+/// Parses comment string with a command in it. Returns comment string verbatim if command not
+/// found, otherwise parses command and passes it to execute gash which carries it out.
+fn external_command(comment : &str) -> String{          // Iterates through a comment
+    match comment.match_indices("#exec cmd=\"").next(){     // Finds index of command execution, if exists
         Some((_,start)) => {
             match comment[start..].match_indices("\"").last(){
                 Some((end,_)) => execute_gash(&comment[start..start+end]),       //Executes gash
@@ -584,7 +583,7 @@ fn external_command(comment : &str) -> String{          //Iterates through a com
                 }
             }
         },
-        None => String::from_str(comment)        //Returns result
+        None => String::from_str(comment)        // Returns result
     }
 }
 
