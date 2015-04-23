@@ -1,6 +1,6 @@
 use std::collections::hash_map::HashMap;
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
+use std::collections::VecDeque;
+
 fn main(){
     println!("ehl");
 }
@@ -10,79 +10,106 @@ fn main(){
 /// and a vector of operands (arguments to operator).
 struct ServerFileCache {
     path_string_to_cached_file: HashMap<String,CachedFile>,
-    cached_file_ttl_heap: BinaryHeap<CachedFile>,
-    capacity: u64,
-    size: u64,
-    latest: usize
+    ttl_queue: VecDeque<String>,
+    capacity: usize,
+    size: usize
 }
 
 /// The cached file struct keeps track of a file as a vector of bytes and its last modified date
 struct CachedFile {
-    ttl: usize,
     content: Vec<u8>,
-    modified: u64
-    
+    modified: usize
 }
 
-impl Ord for CachedFile {
-    fn cmp(&self, other: &CachedFile) -> Ordering {
-        // Notice that the we flip the ordering here
-        other.ttl.cmp(&self.ttl)
+impl CachedFile {
+    fn new(content: Vec<u8>, modified: usize) -> CachedFile {
+        CachedFile{
+            content: content,
+            modified: modified
+        }
+    }
+    fn size(&self) -> usize{
+        self.content.len()
     }
 }
 
-// `PartialOrd` needs to be implemented as well.
-impl PartialOrd for CachedFile {
-    fn partial_cmp(&self, other: &CachedFile) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
-impl PartialEq for CachedFile {
-    fn eq(&self, other: &CachedFile) -> bool {
-        self.content == other.content
-    }
-}
-
-impl Eq for CachedFile {}
-
-
+/// Implements a server file cache
 impl ServerFileCache {
-    /// Create new GashOperation by deep-copying string slices into internally referenced
-    /// Strings so that this struct can be self-contained and passed into threads safely.
-    fn new(capacity: u64) -> ServerFileCache {
+    fn new(capacity: usize) -> ServerFileCache {
         ServerFileCache{
             path_string_to_cached_file:HashMap::new(),
+            ttl_queue: VecDeque::new(),
             capacity:capacity,
-            cached_file_ttl_heap:BinaryHeap::new(),
-            latest:0
+            size: 0
         }
     }
 
-    fn get(&self, path_string : String, modified : u64) -> Option<&CachedFile> {
+    fn size(&self) -> usize{
+        self.size
+    }
+
+    fn capacity(&self) -> usize{
+        self.capacity
+    }
+
+    fn free_space(&self) -> usize{
+        self.size() - self.capacity()
+    }
+
+    fn get(&self, path_string : String, modified : usize) -> Option<&CachedFile> {
         match self.path_string_to_cached_file.get(&path_string){
-            Some(cached_file) if cached_file.modified == modified => {
-                let mut current_ttl = cached_file.ttl;
-                current_ttl += 1;
-                Some(cached_file)
-            }
+            Some(cached_file) if cached_file.modified >= modified => Some(cached_file),
             _ => None
         }
     }
 
-    fn insert(&mut self, path_string : String, modified: u64, content: Vec<u8>){
-        let cached_file = CachedFile{
-            ttl: 0,
-            content: content,
-            modified: modified
-        };
+    fn insert(&mut self, path_string : String, modified: usize, content: Vec<u8>){
+        let cached_file = CachedFile::new(content, modified);
+        if cached_file.size() > self.capacity(){
+            return;
+        }
+        let current_size = self.size();
+        if cached_file.size() > self.size() {
+            self.free(cached_file.size()-current_size);
+        }
+        self.enqueue(String::from_str(path_string.as_slice()));
         self.path_string_to_cached_file.insert(path_string,cached_file);
-
-        
+    }
+    
+    /// Insert to TTL Queue
+    fn enqueue(&mut self, path_string: String){
+        match self.find(path_string.as_slice()){
+            Some(index) => {self.ttl_queue.remove(index);}
+            None => {}
+        }
+        self.ttl_queue.push_front(path_string);
+    }
+    
+    /// Finds the index of a specified element
+    fn find(&mut self, path_string: &str) -> Option<usize>{
+        self.ttl_queue.iter().position(|ele| *ele == path_string)  
+    }
+    
+    /// Removes the least recently accessed element, returns its size
+    fn remove_lru(&mut self) -> usize {
+        match self.ttl_queue.pop_back(){
+            Some(old_cache_path) => 
+                match self.path_string_to_cached_file.remove(&old_cache_path){
+                    Some(old_cache_file) => old_cache_file.size(),
+                    None => 0
+                },
+            None => 0
+        }
     }
 
-    fn free(&mut self, reduce_by : u64){
-        
+    fn free(&mut self, space_to_free : usize){
+        for _ in 0..self.ttl_queue.len(){
+            self.size -= self.remove_lru();
+            if self.free_space() >= space_to_free{
+                return;
+            }
+        }
     }
 
 }
