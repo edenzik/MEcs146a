@@ -23,7 +23,6 @@
 #![feature(collections)]
 #![feature(process)]
 #![feature(std_misc)]
-#![allow(non_camel_case_types)]
 #![allow(unused_must_use)]
 #[macro_use]
 extern crate log;

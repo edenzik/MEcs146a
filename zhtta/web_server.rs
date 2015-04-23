@@ -17,7 +17,7 @@ use std::io::Read;
 use std::collections::BinaryHeap;
 use std::collections::hash_map::HashMap;
 
-use http_request::HTTP_Request;
+use http_request::HTTPRequest;
 use external_cmd;
 
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
@@ -53,7 +53,7 @@ pub struct WebServer {
     www_dir_path: Path,
     visitor_count: usize,
 
-    request_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>,
+    request_queue_arc: Arc<Mutex<BinaryHeap<HTTPRequest>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>,
     file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             // A HashMap of file caches 
     cache_size: Arc<Mutex<u64>>,                                    // Keeps track of cache size
@@ -177,8 +177,8 @@ impl WebServer {
                             debug!("=====Terminated connection from [{}].=====", peer_name);
                         } else { 
                             debug!("===== Static Page request =====");
-                            // Create an HTTP_Request object for either cache or non-cache serving
-                            let req = HTTP_Request::new( peer_name, path_obj.clone() );
+                            // Create an HTTPRequest object for either cache or non-cache serving
+                            let req = HTTPRequest::new( peer_name, path_obj.clone() );
 
                             let file_cache = file_cache_arc.lock().unwrap();
 
@@ -225,7 +225,7 @@ impl WebServer {
     /// the cache.
     fn respond_with_static_file(cache_arc: Arc<Mutex<HashMap<String,CachedFile>>>,
         cache_size_arc : Arc<Mutex<u64>>, mut stream: TcpStream, 
-        request: HTTP_Request, sem: Arc<Semaphore>) {
+        request: HTTPRequest, sem: Arc<Semaphore>) {
 
         let file_reader = File::open(&request.path).unwrap();
 
@@ -287,9 +287,9 @@ impl WebServer {
         stream.write_all(processed_output.as_bytes());
     }
 
-    fn enqueue_static_file_request(stream: TcpStream, req: HTTP_Request, 
+    fn enqueue_static_file_request(stream: TcpStream, req: HTTPRequest, 
        stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>, 
-       req_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>, notify_chan: Sender<()>) {
+       req_queue_arc: Arc<Mutex<BinaryHeap<HTTPRequest>>>, notify_chan: Sender<()>) {
         // Save stream in hashmap for later response.
         let (stream_tx, stream_rx) = channel();
         stream_tx.send(stream);
@@ -315,7 +315,7 @@ impl WebServer {
         {   // make sure we request the lock inside a block with different scope, 
             // so that we give it back at the end of that block
             let mut local_req_queue = local_req_queue.lock().unwrap();
-            let req: HTTP_Request = match req_rx.recv(){
+            let req: HTTPRequest = match req_rx.recv(){
                 Ok(s) => s,
                 Err(e) => panic!("There was an error while receiving from the request channel! {}", e),
             };
