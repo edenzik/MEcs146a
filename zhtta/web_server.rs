@@ -26,7 +26,7 @@ const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 // Tunable parameters
 const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
 const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
-const CACHE_CAPACITY: usize = 61000000;  // Size of file cache (bytes)
+const CACHE_CAPACITY: usize = 6100000000;  // Size of file cache (bytes)
 
 // Static responses
 const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
@@ -218,7 +218,7 @@ impl WebServer {
     fn respond_with_static_file(server_file_cache_arc: Arc<Mutex<ServerFileCache>>, mut stream: TcpStream, 
         request: HTTPRequest, sem: Arc<Semaphore>) {
 
-        let file_reader = File::open(&request.path).unwrap();
+        let mut file_reader = File::open(&request.path).unwrap();
 
         debug!("Serving static file from disk {}", request.path_string);
 
@@ -229,7 +229,6 @@ impl WebServer {
 
             stream.write_all(HTTP_OK.as_bytes());
 
-            let mut file_reader = file_reader;
             let mut buf : [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             loop {
                 match file_reader.read(&mut buf) {
