@@ -140,8 +140,8 @@ struct WebServer {
 
     request_queue_arc: Arc<Mutex<BinaryHeap<HTTP_Request>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, std::old_io::net::tcp::TcpStream>>>,
-    file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             //A HashMap of file caches 
-    cache_size: Arc<Mutex<u64>>,                                    //Keeps track of cache size
+    file_cache: Arc<Mutex<HashMap<String,CachedFile>>>,             // A HashMap of file caches 
+    cache_size: Arc<Mutex<u64>>,                                    // Keeps track of cache size
 
     notify_rx: Receiver<()>,
     notify_tx: Sender<()>
@@ -161,8 +161,8 @@ impl WebServer {
 
             request_queue_arc: Arc::new(Mutex::new(BinaryHeap::new())),
             stream_map_arc: Arc::new(Mutex::new(HashMap::new())),
-            file_cache: Arc::new(Mutex::new(HashMap::new())),               //Initializes file cache
-            cache_size: Arc::new(Mutex::new(0)),                            //Initializes cache size
+            file_cache: Arc::new(Mutex::new(HashMap::new())),               // Initializes file cache
+            cache_size: Arc::new(Mutex::new(0)),                            // Initializes cache size
 
             notify_rx: notify_rx,
             notify_tx: notify_tx,
@@ -181,7 +181,7 @@ impl WebServer {
         let notify_tx = self.notify_tx.clone();
         let file_cache_arc = self.file_cache.clone();
         let stream_map_arc = self.stream_map_arc.clone();
-        let visitor_count = self.visitor_count;         //Clone a local copy of visitor_count
+        let visitor_count = self.visitor_count;         // Clone a local copy of visitor_count
 
 
         Builder::new().name("Listener".to_string()).spawn(move|| {
@@ -213,7 +213,7 @@ impl WebServer {
                             Ok(count) => count,
                             Err(_) => panic!("Error getting lock for visit count."),
                         };
-                        *visitor_count += 1;      //Increment visitor_count
+                        *visitor_count += 1;      // Increment visitor_count
                         visit_tx.send(visitor_count.clone()).unwrap();
                     }
                     let this_count = visit_rx.recv().unwrap();
