@@ -18,7 +18,7 @@ use std::collections::BinaryHeap;
 use std::collections::hash_map::HashMap;
 
 use http_request::HTTP_Request;
-use external_cmd::process;
+use external_cmd;
 
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
@@ -283,7 +283,7 @@ impl WebServer {
             Err(_) => panic!("Error converting file content to string."),
         };
         // Process dynamic content and write to output stream
-        let processed_output = process(file_content.as_slice());
+        let processed_output = external_cmd::process(file_content.as_slice());
         stream.write_all(processed_output.as_bytes());
     }
 

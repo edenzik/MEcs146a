@@ -1,6 +1,5 @@
 use std::process::{Command, Stdio};
 
-
 /// Fill page with dynamically requested content by parsing comment syntax.
 pub fn process(source : &str) -> String {
     let mut start = source.match_indices("<!--");       // indexes of all comment start sequences
