@@ -247,13 +247,13 @@ impl WebServer {
         request: HTTPRequest, sem: Arc<Semaphore>) {
 
         let mut file_reader = File::open(request.path()).unwrap();
-        let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
 
         debug!("Serving static file from disk {}", request.path_string);
         
         // Builds threads
         Builder::new().name("Responder".to_string()).spawn(move|| {             
 
+            let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
             let mut file_content = Vec::with_capacity(request.size() as usize);                          // Initializes a new vector of the file to be read
            // debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
