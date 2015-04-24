@@ -1,3 +1,14 @@
+/// external_cmd.rs
+/// Mike Partridge and Eden Zik
+/// CS146A - Principles of Computer Systems Design
+/// April 2015
+
+/// The External Command module handles filling dynamic content
+/// via calls to gash shell. This includes parsing pages containing
+/// dynamic tags as well as handling interprocess communication
+/// via pipes.
+
+
 use std::process::{Command, Stdio};
 use std::collections::hash_map::HashMap;
 

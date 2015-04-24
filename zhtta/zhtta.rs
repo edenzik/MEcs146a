@@ -12,7 +12,6 @@
 #![allow(unused_must_use)]
 #[macro_use]
 
-///
 /// zhtta.rs
 /// Mike Partridge and Eden Zik
 /// CS146A
@@ -29,9 +28,7 @@
 /// This code implements the basic features of the Zhtta web server, using the underlying Gash
 /// Shell and Rust server communication facilities. 
 ///
-/// Behavior is encapsulated inside the Web Server class.
-/// 
-
+/// Main server behavior is encapsulated inside the Web Server module.
 
 extern crate log;
 extern crate libc;

@@ -1,3 +1,14 @@
+/// server_file_cache.rs
+/// Mike Partridge and Eden Zik
+/// CS146A - Principles of Computer Systems Design
+/// April 2015
+
+/// Server File Cache module handles all caching for the web server. This includes
+/// logic for cache hits and misses as well as staleness. Cache replacement uses a
+/// LRU policy and size is set by an argument to the constructor.
+
+
+
 use std::collections::hash_map::HashMap;
 use std::collections::VecDeque;
 

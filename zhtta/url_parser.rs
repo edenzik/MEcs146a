@@ -1,3 +1,12 @@
+/// url_parser.rs
+/// Mike Partridge and Eden Zik
+/// CS146A - Principles of Computer Systems Design
+/// April 2015
+
+/// URL Parser module handles all parsing of request URLs including decisions related to
+/// well-formed requests and variables passed for dynamic content.
+
+
 use http_request::HTTPRequest;
 use external_cmd::DynamicResponse;
 use std::{env};

@@ -1,3 +1,17 @@
+/// http_request.rs
+/// Mike Partridge and Eden Zik
+/// CS146A - Principles of Computer Systems Design
+/// April 2015
+
+/// The HTTP Request module encapsulates data about a requested file, primarily used for
+/// static requests. Creation of a new request struct makes a system call to read inode data
+/// for modified data and file size. Encapsulation of these requests ensures that only one
+/// system call is made to check file statistics. These statistics are used for correct caching
+/// behavior.
+///
+/// Requests implement ordering by size for shortest-request-first scheduling of non-cached
+/// requests.
+
 use std::cmp::Ordering;
 use std::old_io::fs::PathExtensions;
 
