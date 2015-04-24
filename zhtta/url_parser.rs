@@ -40,7 +40,6 @@ impl ZhttaURL{
                 let request = HTTPRequest::new( peer_name, path_obj.clone() );
                 if ext_str == "shtml" {
                     debug!("{}", url_path_str);
-                    //let dynamic_response = DynamicResponse::new(url_path_str);
                     return ZhttaURL::Dynamic(request, DynamicResponse::new(url_path_str));
                 }
                 return ZhttaURL::Static(request);

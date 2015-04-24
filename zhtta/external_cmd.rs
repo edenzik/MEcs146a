@@ -2,18 +2,22 @@ use std::process::{Command, Stdio};
 use std::collections::hash_map::HashMap;
 
 
-/// Server File Cache structure keeps track of all the files in a map
+/// A dynamic response, which contains any arguments to replace in the commands 
 pub struct DynamicResponse {
     replacement_map : HashMap<String,String>                    // A replacement map for arguments
 }
 
+/// Implements dynamic response
 impl DynamicResponse {
+    /// Initializes all arguments if those exist
     pub fn new(uri_string : &str) -> DynamicResponse {
         match DynamicResponse::parse_args(uri_string){
             Some(map) => DynamicResponse{replacement_map:map},
             None => DynamicResponse{replacement_map:HashMap::new()}
         }
     }
+
+    /// Processes a dynamic response
     pub fn process(&self, source : &str) -> String{
         let mut start = source.match_indices("<!--");       // indexes of all comment start sequences
         let mut end = source.match_indices("-->");          // indexes of all comment end sequences

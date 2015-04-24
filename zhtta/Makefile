@@ -4,8 +4,8 @@ ROOT = www
 OS = $(UNAME)
 UNIT = m
 PORT = 4414
-CONNS = 60
-RATE = 60
+CONNS = 25
+RATE = 15
 
 setup:
 	mkdir $(ROOT)

@@ -1,18 +1,3 @@
-//
-// zhtta.rs
-//
-// Starting code for PA3
-// Revised to run on Rust 1.0.0 nightly - built 02-21
-//
-// Note that this code has serious security risks!  You should not run it 
-// on any system with access to sensitive files.
-// 
-// Brandeis University - cs146a Spring 2015
-// Dimokritos Stamatakis and Brionne Godby
-// Version 1.0
-
-// To see debug! outputs set the RUST_LOG environment variable, e.g.: export RUST_LOG="zhtta=debug"
-
 #![feature(rustc_private)]
 #![feature(libc)]
 #![feature(io)]
@@ -26,6 +11,28 @@
 #![feature(str_words)]
 #![allow(unused_must_use)]
 #[macro_use]
+
+///
+/// zhtta.rs
+/// Mike Partridge and Eden Zik
+/// CS146A
+/// Brandeis University
+/// April 2015
+///
+/// Revised to run on Rust 1.0.0 nightly - built 02-21
+///
+/// Note that this code has serious security risks!  You should not run it 
+/// on any system with access to sensitive files.
+// 
+/// To see debug! outputs set the RUST_LOG environment variable, e.g.: export RUST_LOG="zhtta=debug"
+///
+/// This code implements the basic features of the Zhtta web server, using the underlying Gash
+/// Shell and Rust server communication facilities. 
+///
+/// Behavior is encapsulated inside the Web Server class.
+/// 
+
+
 extern crate log;
 extern crate libc;
 

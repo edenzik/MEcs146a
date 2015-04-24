@@ -35,7 +35,7 @@ const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
 /// Tunable parameters
 const REQ_HANDLER_COUNT : isize = 20;       // Max number of file request handler threads
-const BUFFER_SIZE : usize = 8192;           // Size of file buffer to send (bytes)
+const BUFFER_SIZE : usize = 512;           // Size of file buffer to send (bytes)
 const CACHE_CAPACITY: usize = 6100000000;  // Size of file cache (bytes)
 
 /// Static responses
@@ -235,7 +235,7 @@ impl WebServer {
         // Builds threads
         Builder::new().name("Responder".to_string()).spawn(move|| {             
             let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
-            let mut file_content = Vec::new();                          // Initializes a new vector of the file to be read
+            let mut file_content = Vec::with_capacity(request.size() as usize);                          // Initializes a new vector of the file to be read
            // debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
             stream.write_all(HTTP_OK.as_bytes());
@@ -247,7 +247,7 @@ impl WebServer {
                     Ok(_)   => {},                      // Continue if buffer not empty
                     Err(_)  => break
                 };
-                file_content.push_all(&buf);
+                file_content.push_all(&mut buf);
                 stream.write_all(&mut buf);
             }
             
