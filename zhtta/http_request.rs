@@ -24,6 +24,10 @@ impl HTTPRequest {
         self.path_string.clone()
     }
 
+    pub fn path(&self) -> &Path{
+        &self.path
+    }
+
     pub fn modified(&self) -> u64{
         self.modified
     }

@@ -23,6 +23,7 @@
 #![feature(collections)]
 #![feature(process)]
 #![feature(std_misc)]
+#![feature(str_words)]
 #![allow(unused_must_use)]
 #[macro_use]
 extern crate log;
@@ -40,6 +41,7 @@ use web_server::WebServer;
 mod http_request;
 mod external_cmd;
 mod server_file_cache;
+mod url_parser;
 
 // Server config
 const IP : &'static str = "127.0.0.1";

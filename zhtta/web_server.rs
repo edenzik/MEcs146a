@@ -1,3 +1,13 @@
+/// web_server.rs
+/// Mike Partridge and Eden Zik
+/// CS146A - Principles of Computer Systems Design
+/// April 2015
+
+/// The web server module encapsulates core functionality of the Zhtta server
+/// Capable of handling requests and relaying them to external underlying shell
+/// It is invoked by zhtta.rs.
+
+
 use std::sync::{Arc, Mutex, Semaphore};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
@@ -7,7 +17,6 @@ use std::{env, str};
 
 use std::old_io::File;
 use std::old_io::{ Acceptor, Listener, TcpListener };
-use std::old_io::fs::PathExtensions;
 use std::old_io::net::tcp::TcpStream;
 
 use std::old_path::posix::Path;
@@ -19,16 +28,17 @@ use std::collections::hash_map::HashMap;
 
 use http_request::HTTPRequest;
 use server_file_cache::{ServerFileCache, CachedFile};
-use external_cmd;
+use external_cmd::DynamicResponse;
+use url_parser::ZhttaURL;
 
 const SERVER_NAME : &'static str = "Zhtta Version 1.0";
 
-// Tunable parameters
-const REQ_HANDLER_COUNT : isize = 20;   // Max number of file request handler threads
-const BUFFER_SIZE : usize = 512;        // Size of file buffer to send (bytes)
+/// Tunable parameters
+const REQ_HANDLER_COUNT : isize = 20;       // Max number of file request handler threads
+const BUFFER_SIZE : usize = 8192;           // Size of file buffer to send (bytes)
 const CACHE_CAPACITY: usize = 6100000000;  // Size of file cache (bytes)
 
-// Static responses
+/// Static responses
 const HTTP_OK : &'static str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
 const HTTP_BAD : &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
 
@@ -40,9 +50,8 @@ const COUNTER_STYLE : &'static str = "<doctype !html><html><head><title>Hello, R
              <body>";
 
 
-/// Web server struct stores properties of the web server, such as the counter, the IP, the port,
-/// directory path, and others.
-/// The file caches is kept as a HashMap of (file path) -> (CachedFile struct)
+/// Web server struct stores properties of the web server. These properties include the IP, the
+/// port, the directory path, the visitor count, the cache, and request queues.
 pub struct WebServer {
     ip: String,
     port: usize,
@@ -51,13 +60,16 @@ pub struct WebServer {
 
     request_queue_arc: Arc<Mutex<BinaryHeap<HTTPRequest>>>,
     stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>,
-    server_file_cache: Arc<Mutex<ServerFileCache>>,             // A HashMap of file caches 
+    server_file_cache: Arc<Mutex<ServerFileCache>>,
 
     notify_rx: Receiver<()>,
     notify_tx: Sender<()>
 }
 
+///Implements a WebServer, and initializes it.
 impl WebServer {
+    /// Constructor for a new web server, which initializes the counter to 0 and creates an
+    /// empty cache.
     pub fn new(ip: String, port: usize, www_dir: String) -> WebServer {
         let (notify_tx, notify_rx) = channel();
         let www_dir_path = Path::new(www_dir);
@@ -77,20 +89,31 @@ impl WebServer {
         }
     }
 
+    
+    fn get_peer_name(stream: &mut TcpStream) -> String{
+        match stream.peer_name(){
+            Ok(s) => {format!("{}:{}", s.ip, s.port)}
+            Err(e) => {panic!("Error while getting the stream name! {}", e)}
+        }
+    }
+    
+    /// Run the web server to listen for connections and asynchronously dequeue static file requests.
     pub fn run(&mut self) {
         self.listen();
         self.dequeue_static_file_request();
     }
 
+    /// Listens to incoming connections and is invoked when one is received.
     fn listen(&mut self) {
+
+        // Makes local clones of arcs for the struct fields.
         let addr = String::from_str(format!("{}:{}", self.ip, self.port).as_slice());
         let www_dir_path_str = self.www_dir_path.clone();
         let request_queue_arc = self.request_queue_arc.clone();
         let notify_tx = self.notify_tx.clone();
         let server_file_cache_arc = self.server_file_cache.clone();
         let stream_map_arc = self.stream_map_arc.clone();
-        let visitor_count = self.visitor_count;         // Clone a local copy of visitor_count
-
+        let visitor_count = self.visitor_count;         
 
         Builder::new().name("Listener".to_string()).spawn(move|| {
             let listener = TcpListener::bind(addr.as_slice()).unwrap();
@@ -101,17 +124,15 @@ impl WebServer {
             println!("{} listening on {} (serving from: {}).", 
                      SERVER_NAME, addr, www_dir_path_str.as_str().unwrap());
             for stream_raw in acceptor.incoming() {
-                // Make a local copy of the Arc (increases its internal count)
+                // Making a local clone of the arc for each incoming connection
                 let visitor_count = visitor_count.clone();
-
                 let (queue_tx, queue_rx) = channel();
-                queue_tx.send(request_queue_arc.clone());
-
                 let notify_chan = notify_tx.clone();
                 let stream_map_arc = stream_map_arc.clone();
-
-
                 let server_file_cache_arc = server_file_cache_arc.clone();
+                
+                // Sends the request queue down the channel
+                queue_tx.send(request_queue_arc.clone());
 
                 // Spawn a task to handle the connection.
                 Builder::new().name("Handler".to_string()).spawn(move|| {
@@ -126,9 +147,7 @@ impl WebServer {
                         visit_tx.send(visitor_count.clone()).unwrap();
                     }
                     let this_count = visit_rx.recv().unwrap();
-
                     let request_queue_arc = queue_rx.recv().unwrap();
-
                     let mut stream = match stream_raw {
                         Ok(s) => {s}
                         Err(e) => { panic!("Error getting the listener stream! {}", e) }
@@ -144,61 +163,55 @@ impl WebServer {
                     };
                     debug!("Request:\n{}", request_str);
 
-                    let req_group: Vec<&str> = request_str.splitn(3, ' ').collect();
-                    if req_group.len() > 2 {
-                        let path_str = ".".to_string() + req_group[1];
-                        let mut path_obj = env::current_dir().unwrap();
-                        path_obj.push(path_str.clone());
-                        let ext_str = match path_obj.extension_str() {
-                            Some(e) => e,
-                            None => "",
-                        };
-
-                        debug!("Requested path: [{}]", path_obj.as_str().expect("error"));
-                        debug!("Requested path: [{}]", path_str);
-
-                        if path_str.as_slice().eq("./")  {
+                    match ZhttaURL::new(String::from_str(request_str), peer_name.clone()) {
+                        ZhttaURL::Counter => {
                             debug!("===== Counter Page request =====");
                             WebServer::respond_with_counter_page(stream, this_count);
                             debug!("=====Terminated connection from [{}].=====", peer_name);
-                        }  else if !path_obj.exists() || path_obj.is_dir() {
+                        }
+                        ZhttaURL::Error(path_str) => {
                             debug!("===== Error page request =====");
-                            WebServer::respond_with_error_page(stream, &path_obj);
+                            WebServer::respond_with_error_page(stream, path_str);
                             debug!("=====Terminated connection from [{}].=====", peer_name);
-                        } else if ext_str == "shtml" { // Dynamic web pages.
+                        }
+                        ZhttaURL::Dynamic(request, response) => {
                             debug!("===== Dynamic Page request =====");
-                            WebServer::respond_with_dynamic_page(stream, &path_obj);
+                            WebServer::respond_with_dynamic_page(stream, request, response);
                             debug!("=====Terminated connection from [{}].=====", peer_name);
-                        } else { 
+                        }
+                        ZhttaURL::Static(request) => {
                             debug!("===== Static Page request =====");
                             // Create an HTTPRequest object for either cache or non-cache serving
-                            let request = HTTPRequest::new( peer_name, path_obj.clone() );
                             let server_file_cache = server_file_cache_arc.lock().unwrap();
                             match server_file_cache.get(request.path_string(), request.modified()){
                                 Some(cached_file) => WebServer::respond_with_static_cached_file(stream,cached_file),
                                 None => WebServer::enqueue_static_file_request(stream, request, stream_map_arc, request_queue_arc, notify_chan)
                             }
                         }
+                        ZhttaURL::Bad => {}
+
                     }
                 });
             }
         });
     }
 
+    /// If the static file exists in the cache, serve it
     fn respond_with_static_cached_file(mut stream: TcpStream, cached_file: &CachedFile) {
         stream.write_all(HTTP_OK.as_bytes());
         debug!("Responding with file from cache");
-        stream.write_all(&cached_file.content());
+        stream.write_all(cached_file.content().as_slice());
     }
 
-
-    fn respond_with_error_page(stream: TcpStream, path: &Path) {
+    /// If an error occurred, respond with an error page
+    fn respond_with_error_page(stream: TcpStream, path: String) {
         let mut stream = stream;
-        let msg: String= format!("Cannot open: {}", path.as_str().expect("invalid path"));
+        let msg: String= format!("Cannot open: {}", path);
         stream.write_all(HTTP_BAD.as_bytes());
         stream.write_all(msg.as_bytes());
     }
 
+    /// If a counter was required, respond with a counter page
     fn respond_with_counter_page(stream: TcpStream, visitor_count: usize) {
         let mut stream = stream;
         let response: String = 
@@ -209,20 +222,18 @@ impl WebServer {
         stream.write_all(response.as_bytes());
     }
 
-    /// Initializes a buffer, writes BUFFER_SIZE segments of file to that buffer
-    /// Implements file caching using a HashMap, with the file path as the key.
-    /// Serves static file as live streams, reading off a chunk of a file and sending it to a
-    /// client.
-    /// Adds all files read but not in cache to the cache, with the exception of files too big for
-    /// the cache.
-    fn respond_with_static_file(server_file_cache_arc: Arc<Mutex<ServerFileCache>>, mut stream: TcpStream, 
+    /// This function is invoked when the required file is not in the cache. It then reads the
+    /// file from disk into a buffer, while adding it to a vector of bytes that will then be
+    /// used to cache the file into a ServerFileCache 
+    fn respond_with_static_file_and_save_to_cache(server_file_cache_arc: Arc<Mutex<ServerFileCache>>, mut stream: TcpStream, 
         request: HTTPRequest, sem: Arc<Semaphore>) {
 
-        let mut file_reader = File::open(&request.path).unwrap();
+        let mut file_reader = File::open(request.path()).unwrap();
 
         debug!("Serving static file from disk {}", request.path_string);
-
-        Builder::new().name("Responder".to_string()).spawn(move|| {  // Builds threads
+        
+        // Builds threads
+        Builder::new().name("Responder".to_string()).spawn(move|| {             
             let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
             let mut file_content = Vec::new();                          // Initializes a new vector of the file to be read
            // debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
@@ -240,7 +251,6 @@ impl WebServer {
                 stream.write_all(&mut buf);
             }
             
-            //debug!("Cached file {} of size {}, cache size {}", request.path_string, request.size, *cache_size);
             server_file_cache.insert(request.path_string(), request.modified, file_content);
             sem.release();          // Releases semaphore to allow another Responder thread to spawn
 
@@ -250,10 +260,10 @@ impl WebServer {
     }
 
     // Server-side gashing.
-    fn respond_with_dynamic_page(stream: TcpStream, path: &Path) {
+    fn respond_with_dynamic_page(stream: TcpStream, request: HTTPRequest, response: DynamicResponse) {
         let mut stream = stream;
         // Open file for dynamic content
-        let mut file_reader = match File::open(path) {
+        let mut file_reader = match File::open(request.path()) {
             Ok(file) => file,
             Err(_) => panic!("Error opening dynamic page file."),
         };
@@ -269,10 +279,11 @@ impl WebServer {
             Err(_) => panic!("Error converting file content to string."),
         };
         // Process dynamic content and write to output stream
-        let processed_output = external_cmd::process(file_content.as_slice());
+        let processed_output = response.process(file_content.as_slice());
         stream.write_all(processed_output.as_bytes());
     }
 
+    /// Adds an async request for a static file
     fn enqueue_static_file_request(stream: TcpStream, req: HTTPRequest, 
        stream_map_arc: Arc<Mutex<HashMap<String, TcpStream>>>, 
        req_queue_arc: Arc<Mutex<BinaryHeap<HTTPRequest>>>, notify_chan: Sender<()>) {
@@ -356,15 +367,8 @@ impl WebServer {
             // Semaphore ensures that we do not serve too many concurrent requests
             req_semaphore_arc.acquire();
 
-            WebServer::respond_with_static_file(self.server_file_cache.clone(), 
+            WebServer::respond_with_static_file_and_save_to_cache(self.server_file_cache.clone(), 
                 stream, request, req_semaphore_arc.clone());
-        }
-    }
-
-    fn get_peer_name(stream: &mut TcpStream) -> String{
-        match stream.peer_name(){
-            Ok(s) => {format!("{}:{}", s.ip, s.port)}
-            Err(e) => {panic!("Error while getting the stream name! {}", e)}
         }
     }
 }
