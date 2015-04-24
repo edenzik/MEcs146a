@@ -247,6 +247,7 @@ impl WebServer {
         request: HTTPRequest, sem: Arc<Semaphore>) {
 
         let mut file_reader = File::open(request.path()).unwrap();
+        let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
 
         debug!("Serving static file from disk {}", request.path_string);
         
@@ -269,7 +270,6 @@ impl WebServer {
                 stream.write_all(&mut buf);
             }
             
-            let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
             server_file_cache.insert(request.path_string(), request.modified, file_content);
             sem.release();          // Releases semaphore to allow another Responder thread to spawn
 
