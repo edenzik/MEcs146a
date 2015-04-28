@@ -30,9 +30,11 @@ The new features implemented in this revision are as follows:
 
 ## Structure
 
+
 In order to allow for more readable code, more coherent following of the Rust guidelines, and better concurrent work, our server has been split into several modules. Descriptions of the functionality of individual modules are included as block comments at the beginning of each file, so only a list of modules is included here. Modules are zhtta, web_server, http_request, external_cmd, server_file_cache, and url_parser. Modules expose only required public fields and functions to maximize encapsulation.
 
 ## Description
+
 
 ### Safe Counter
 To implement a safe version of the visit counter, we use two rust constructs. The counter is wrapped in a mutex, which requires locking the mutex to retrieve the counter for incrementing and printing. This ensures that only one thread is modifying the counter at a time, preventing data races. In order to guarantee memory safety as this object is being accessed by various threads, we used an Arc pointer and passed copies of that pointer into each handler thread. The Arc pointer type atomically reference counts the accesses and ensures that the reference count is always accurate so that it will not be freed while a thread is using the counter. Arc requires that it be wrapped around an object implementing sync, which mutex does.
@@ -72,15 +74,31 @@ Rather than perform a single, large blocking request to get all file data and th
 
 ### Caching
 
-Caching is implemented with an LRU method. Files are served from the cached single-threaded because from-memory serving is fast enough that overhead incurred by multithreaded access to the cache is undesireable. After a file is read from disk, an explicit call is made to the cache to save that file for later retrieval. We elected not to implement a read-through cache to better support serving cached files from the mail listener thread while saving files in the cache from responder threads. Files served from the cache are passed by reference to avoid copying data for maximum performance.
+Caching is implemented with an LRU method. Files are served from the cached single-threaded because from-memory serving is fast enough that overhead incurred by multi threaded access to the cache is undesirable. After a file is read from disk, an explicit call is made to the cache to save that file for later retrieval. We elected not to implement a read-through cache to better support serving cached files from the mail listener thread while saving files in the cache from responder threads. Files served from the cache are passed by reference to avoid copying data for maximum performance.
 
 ### Parameter passing in URL
 
+Many web services in the pre-AJAX era were purely about delivering static pages that could be refreshed in response to user activity in a synchronous way. Even now, with user facing JavaScript that asynchronously asks the server for data, the ability to interact with the server in a meaningful real time way is even more valuable.
 
+This is the essence of a REST API, and our Zhtta server implements the GET capability. When a browser issues a GET request on a "dynamic" file on our server (ending in a .shtml extension) it is able to pass on all parameters occurring in a server side gashing.
+
+We support the following syntax, embedded in the HTML file:
+
+`<!--#exec cmd="cat $file | grep $keyword" -->`
+
+Where the URL is something of the following:
+
+`http://myzhtta_hostname:4414/get_keyword.shtml?file=myfile.txt&keyword=foo`
+
+By enabling dynamic interactions that are scoped through the HTML we sent through the server, we are able to allow the user to pass us variables to serve without opening us up to arbitrary shell injection.
+
+The way this works is by parsing the URL and detecting whether the question mark character is present by the parser. If the character is found in the URL, it is split on it and an iteration occurs on all arguments. Then we match up the argument name with any appearance of a `$` in the dynamic comments.
+
+Once all the substitutions are made, it is passed on to gash just as before.
 
 ### Miscelenous improvements
 
-Many of our miscelaneous improvements have been alluded to in earlier sections. We serve cached files from the main listener thread (since no blocking I/O is requred) which saves us the overhead of spawning a thread and enqueue/dequeueing the request. This improved test performance by over 10%. 
+Many of our miscellaneous improvements have been alluded to in earlier sections. We serve cached files from the main listener thread (since no blocking I/O is required) which saves us the overhead of spawning a thread and enqueue/dequeuing the request. This improved test performance by over 10%. 
 
 ## Performance
 
@@ -88,7 +106,7 @@ Because many of our changes were implemented concurrently, we do not have explic
 
 ## Final Considerations
 
-One tradeoff decision faced was the cost of correctness in the cache. We elected to pay the cost in this case. Before a file is served from the cache, a blocking system call is made to check the modified date on the file and this is compared to the last modified date for the cached version (saved in the cache). If the on-disk version is newer, that request is not served from the cache. This requires an extra I/O operation before EVERY cache operation, a considerable cost. This decision would certainly depend on the application served. In an aplication that could tolerate some stale data, we would have implemented a time-to-live on cached data instead, bypassing the need for I/O to check staleness. Because the application was unknown, we elected for the safer, correct choice. We did not implement both versions of this choice to benchmark, but estimate the cost at more than double for cached files served and negligible for files not served from the cache.
+One tradeoff decision faced was the cost of correctness in the cache. We elected to pay the cost in this case. Before a file is served from the cache, a blocking system call is made to check the modified date on the file and this is compared to the last modified date for the cached version (saved in the cache). If the on-disk version is newer, that request is not served from the cache. This requires an extra I/O operation before EVERY cache operation, a considerable cost. This decision would certainly depend on the application served. In an application that could tolerate some stale data, we would have implemented a time-to-live on cached data instead, bypassing the need for I/O to check staleness. Because the application was unknown, we elected for the safer, correct choice. We did not implement both versions of this choice to benchmark, but estimate the cost at more than double for cached files served and negligible for files not served from the cache.
 
 ##Building
 
