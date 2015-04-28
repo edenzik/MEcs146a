@@ -55,23 +55,27 @@ impl ServerFileCache {
             size: 0
         }
     }
-
+    
+    /// Returns size of the map
     fn size(&self) -> usize{
         self.size
     }
-
+    
+    /// Returns the capacity of the map
     fn capacity(&self) -> usize{
         self.capacity
     }
 
+    /// Returns all the free space left in the map
     fn free_space(&self) -> usize{
         self.capacity() - self.size()
     }
 
-    pub fn get(&self, path_string : String, modified : u64) -> Option<&CachedFile> {
+    /// Gets an element from 
+    pub fn get(&mut self, path_string : String, modified : u64) -> Option<&CachedFile> {
+        self.update_ttl(path_string.clone());
         match self.path_string_to_cached_file.get(&path_string){
             Some(cached_file) if cached_file.modified >= modified => {
-                debug!("File {} was found in the cache", path_string);
                 Some(cached_file)
             }
             Some(old_cached_file) => {
@@ -115,6 +119,19 @@ impl ServerFileCache {
         }
         self.ttl_queue.push_front(path_string);
     }
+
+    /// Updates TTL
+    fn update_ttl(&mut self, path_string: String){
+        match self.find(path_string.as_slice()){
+            Some(index) => {
+                debug!("Updating time to live of file {} from position {}", path_string, index);
+                self.ttl_queue.remove(index);
+                self.ttl_queue.push_front(path_string);
+            }
+            None => {}
+        }
+    }
+
     
     /// Finds the index of a specified element
     fn find(&mut self, path_string: &str) -> Option<usize>{

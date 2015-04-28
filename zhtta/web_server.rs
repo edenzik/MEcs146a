@@ -199,7 +199,7 @@ impl WebServer {
                             */
 
                             //let server_file_option = cache_rx.recv().unwrap();
-                            let server_file_cache = server_file_cache_arc.lock().unwrap();
+                            let mut server_file_cache = server_file_cache_arc.lock().unwrap();
                            
                             match server_file_cache.get(request.path_string(), request.modified()) {
                                 Some(cached_file) => WebServer::respond_with_static_cached_file(stream,cached_file),
