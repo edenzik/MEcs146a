@@ -82,6 +82,9 @@ Caching is implemented with an LRU method. Files are served from the cached sing
 
 Many of our miscelaneous improvements have been alluded to in earlier sections. We serve cached files from the main listener thread (since no blocking I/O is requred) which saves us the overhead of spawning a thread and enqueue/dequeueing the request. This improved test performance by over 10%. 
 
+## Performance
+
+
 ## Final Considerations
 
 One tradeoff decision faced was the cost of correctness in the cache. We elected to pay the cost in this case. Before a file is served from the cache, a blocking system call is made to check the modified date on the file and this is compared to the last modified date for the cached version (saved in the cache). If the on-disk version is newer, that request is not served from the cache. This requires an extra I/O operation before EVERY cache operation, a considerable cost. This decision would certainly depend on the application served. In an aplication that could tolerate some stale data, we would have implemented a time-to-live on cached data instead, bypassing the need for I/O to check staleness. Because the application was unknown, we elected for the safer, correct choice. We did not implement both versions of this choice to benchmark, but estimate the cost at more than double for cached files served and negligible for files not served from the cache.
