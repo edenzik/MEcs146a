@@ -1,16 +1,41 @@
-#Zhtta Server (Part 1)
+#Zhtta Server
 
 - Authors: Michael Partridge, Eden Zik
 - Course: CS146A - System Design
 - Langauge: Rust
 - Version: 1.0.0-nightly (2b01a37ec 2015-02-21) (built 2015-02-21)
-- Date: 4/12/15
+- Date: 4/28/15
 
-We present the first revision of Zhtta server, capable of responding to HTTP requests with dynamiclly loaded content as well as incorporating a safe visitor counter.
+We present the second and final revision of Zhtta server, capable of responding to HTTP requests with dynamically loaded content as well as incorporating a safe visitor counter.
 
-##Description
+As we embarked upon the next series of improvements, we took into consideration the benchmarking performance of our old revision, and well as the Zhapto web server implemented earlier in the course.
 
-###Safe Counter
+In going about this new revision, we had several factors to consider - similar to those considered in a real, live system:
+- Stability of the server when prompted by many requests
+- Speed of the server, and minimal degradation over many requests
+- Correctness, in the form that the request by the user is served in the most "expected" way.
+- Safety of the server
+
+All three of the considerations above are extremely important in a web server, that could be used to implement a real application. All four were considered to some extent, with the latter only being subtly implemented when possible.
+
+Most of the trade-offs we faced in implementing Zhtta were performance and correctness, and a multitude of factors were taken into consideration when reasoning about highly parallel operations.
+
+The new features implemented in this revision are as follows:
+1. Smarter scheduling 
+2. Responding to multiple response task
+3. Shortest remaining processing time prioritization
+4. Live file streaming, with a fixed buffer size passed onto the user in real time
+5. Caching of files with a least-recently-used paging algorithm, to ensure cache size obeys fixed size constraints.
+6. URL parameter passing into a server side Gash
+7. Miscellaneous optimizations
+
+## Structure
+
+In order to allow for more readable code, more coherent following of the Rust guidelines, and 
+
+## Description
+
+### Safe Counter
 To implement a safe version of the visit counter, we use two rust constructs. The counter is wrapped in a mutex, which requires locking the mutex to retrieve the counter for incrementing and printing. This ensures that only one thread is modifying the counter at a time, preventing data races. In order to guarantee memory safety as this object is being accessed by various threads, we used an Arc pointer and passed copies of that pointer into each handler thread. The Arc pointer type atomically reference counts the accesses and ensures that the reference count is always accurate so that it will not be freed while a thread is using the counter. Arc requires that it be wrapped around an object implementing sync, which mutex does.
 
 ###Dynamic Content
@@ -34,11 +59,21 @@ Once a comment is detected, it is passed on to `external_command`, which detects
 
 For Zhtta to work, Gash needs to be at the root directory of the server (the same directory as the server binary). Otherwise, a debug log will instruct that Gash is not found.
 
+## Smarter scheduling 
+
+
+## Responding to multiple response task
+
+
+
+## Shortest remaining processing time prioritization
+
+
 ##Building
 
 To build Gash shell, navigate to the src directory and execute the following command:
 
-`$rustc zhtta.rs`
+`$make all`
 
 This will create a shell binary in the current directory.
 
@@ -46,7 +81,7 @@ This will create a shell binary in the current directory.
 
 To run Zhtta, execute the following:
 
-`$./zhtta`
+`$make run`
 
 The server will start at local port 4414.
 
@@ -57,3 +92,4 @@ To run the web server with extensive error logging, run the following
 `$RUST_LOG=debug ./zhtta`
 
 This will present extensive log messages, for example when bad parsing occurs.
+
