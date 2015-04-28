@@ -16,22 +16,21 @@ In going about this new revision, we had several factors to consider - similar t
 - Correctness, in the form that the request by the user is served in the most "expected" way.
 - Safety of the server
 
-All three of the considerations above are extremely important in a web server, that could be used to implement a real application. All four were considered to some extent, with the latter only being subtly implemented when possible.
+All four of the considerations above are extremely important in a web server, that could be used to implement a real application. All four were considered to some extent, with the latter only being subtly implemented when possible.
 
 Most of the trade-offs we faced in implementing Zhtta were performance and correctness, and a multitude of factors were taken into consideration when reasoning about highly parallel operations.
 
 The new features implemented in this revision are as follows:
-1. Smarter scheduling 
-2. Responding to multiple response task
-3. Shortest remaining processing time prioritization
-4. Live file streaming, with a fixed buffer size passed onto the user in real time
-5. Caching of files with a least-recently-used paging algorithm, to ensure cache size obeys fixed size constraints.
-6. URL parameter passing into a server side Gash
-7. Miscellaneous optimizations
+1. Responding to multiple response task
+2. Shortest remaining processing time prioritization
+3. Live file streaming, with a fixed buffer size passed onto the user in real time
+4. Caching of files with a least-recently-used paging algorithm, to ensure cache size obeys fixed size constraints.
+5. URL parameter passing into a server side Gash
+6. Miscellaneous optimizations
 
 ## Structure
 
-In order to allow for more readable code, more coherent following of the Rust guidelines, and 
+In order to allow for more readable code, more coherent following of the Rust guidelines, and better concurrent work, our server has been split into several modules. Descriptions of the functionality of individual modules are included as block comments at the beginning of each file, so only a list of modules is included here. Modules are zhtta, web_server, http_request, external_cmd, server_file_cache, and url_parser. Modules expose only required public fields and functions to maximize encapsulation.
 
 ## Description
 
@@ -59,15 +58,33 @@ Once a comment is detected, it is passed on to `external_command`, which detects
 
 For Zhtta to work, Gash needs to be at the root directory of the server (the same directory as the server binary). Otherwise, a debug log will instruct that Gash is not found.
 
-## Smarter scheduling 
+### Responding to multiple response task
+
+To handle serving multiple files simultaneously, we spawn a thread to serve each file after dequeueing the request from the request queue. This thread will then block on file I/O independently of serving other requests. To limit the number of requests served simultaneously (threads incur some overhead and interfere with each other) the request serving thread first grabs a semaphore before spawning a child thread. This limits the number of child threads by the size of the semaphore and the request serving thread will block until a child thread dies and it can spawn another. Child threads release the semaphore after serving the request, just before they finish. This change significantly improved our test run time both in total and in average response time. Total time was reduced by over half.
+
+### Reducing Median Latency 
+
+We changed the request queue into an priority queue, ordered by the size of the files (as reported by the OS). The current (as of our version) priority queue in Rust is a binary heap. We implemented an ordering on the HTTP_Request object to support this. Thus, whenever a dequeue is performed on the request queue, this will return the shortest (expected) file to be served and prioritize that file. Note that due to the way caching is implemented, files served directly from the cache are never queued at all and thus our scheduling does not have to consider those files. This change improved overall performance of the test run, but only slightly. It had a higher impact on average response time because short requests spend on average less time waiting behing large requests.
+
+### Streaming
+
+Rather than perform a single, large blocking request to get all file data and then send data to the client all at once, we modified the file read procedure to instead perform blocking requests on a selectable (should be disk block size) capacity buffer and sending a buffer of information at a time. This actually slightly increases total time to send a file, but will allow the user to begin receiving data much sooner. Overall test time increased slightly with this feature.
+
+### Caching
+
+Caching is implemented with an LRU method. Files are served from the cached single-threaded because from-memory serving is fast enough that overhead incurred by multithreaded access to the cache is undesireable. After a file is read from disk, an explicit call is made to the cache to save that file for later retrieval. We elected not to implement a read-through cache to better support serving cached files from the mail listener thread while saving files in the cache from responder threads. Files served from the cache are passed by reference to avoid copying data for maximum performance.
+
+### Parameter passing in URL
 
 
-## Responding to multiple response task
 
+### Miscelenous improvements
 
+Many of our miscelaneous improvements have been alluded to in earlier sections. We serve cached files from the main listener thread (since no blocking I/O is requred) which saves us the overhead of spawning a thread and enqueue/dequeueing the request. This improved test performance by over 10%. 
 
-## Shortest remaining processing time prioritization
+## Final Considerations
 
+One tradeoff decision faced was the cost of correctness in the cache. We elected to pay the cost in this case. Before a file is served from the cache, a blocking system call is made to check the modified date on the file and this is compared to the last modified date for the cached version (saved in the cache). If the on-disk version is newer, that request is not served from the cache. This requires an extra I/O operation before EVERY cache operation, a considerable cost. This decision would certainly depend on the application served. In an aplication that could tolerate some stale data, we would have implemented a time-to-live on cached data instead, bypassing the need for I/O to check staleness. Because the application was unknown, we elected for the safer, correct choice. We did not implement both versions of this choice to benchmark, but estimate the cost at more than double for cached files served and negligible for files not served from the cache.
 
 ##Building
 
