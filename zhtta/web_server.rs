@@ -247,7 +247,7 @@ impl WebServer {
         
         // Builds threads
         Builder::new().name("Responder".to_string()).spawn(move|| {             
-            let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
+
             let mut file_content = Vec::with_capacity(request.size() as usize);                          // Initializes a new vector of the file to be read
            // debug!("Checking cache of size {} for file {}", *cache_size, request.path_string);
 
@@ -264,6 +264,7 @@ impl WebServer {
                 stream.write_all(&mut buf);
             }
             
+            let mut server_file_cache = server_file_cache_arc.lock().unwrap();               // Locks the cache
             server_file_cache.insert(request.path_string(), request.modified, file_content);
             sem.release();          // Releases semaphore to allow another Responder thread to spawn
 
