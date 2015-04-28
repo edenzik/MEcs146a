@@ -139,7 +139,14 @@ impl DynamicResponse {
                 return String::from_str(command_string);
             }
         };
-        String::from_utf8(cmd.stdout).unwrap()
+        match String::from_utf8(cmd.stdout) {
+            Ok(s) => s,
+            Err(_) => {
+                debug!("ERROR: failed to parse return from gash. Sending request string back instead.");
+                String::from_str(command_string)
+            }
+        }
+        
     }
 }
 
