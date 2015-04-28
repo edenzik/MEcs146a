@@ -73,7 +73,13 @@ impl ServerFileCache {
 
     /// Gets an element from 
     pub fn get(&mut self, path_string : String, modified : u64) -> Option<&CachedFile> {
+        debug!("Updating TTL for {}", path_string);
+        debug!("TTL vec is: \n{}", self.ttl_queue);
+        
         self.update_ttl(path_string.clone());
+
+        debug!("TTL vec is now: \n{}", self.ttl_queue);
+        
         match self.path_string_to_cached_file.get(&path_string){
             Some(cached_file) if cached_file.modified >= modified => {
                 Some(cached_file)
