@@ -27,8 +27,15 @@ pub struct HTTPRequest {
 impl HTTPRequest {
     /// Constructor for HTTPRequest makes blocking call to system for file statistics
     pub fn new(peer_name: String, path: Path) -> HTTPRequest {
-        let stats = path.stat().unwrap();
-        let path_string = String::from_str(path.as_str().unwrap());
+        let stats = match path.stat(){
+            Ok(s) => s,
+            Err(_) => panic!("Failed to get stats for file."),
+        };
+
+        let path_string = match path.as_str() {
+            Some(s) => String::from_str(s),
+            None => panic!("Failed to parse path to UTF-8 string."),
+        };
 
         HTTPRequest { peer_name: peer_name, path: path, path_string: path_string, 
             size: stats.size, modified: stats.modified }
