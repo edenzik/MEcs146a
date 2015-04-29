@@ -1,0 +1,28 @@
+<html><head><title>Hello, Rust!</title>
+</head>
+
+<body>
+<h1>Testing Zhatta parameter side gashing feature:</h1>
+
+<hr>
+
+<a href="http://localhost:4414/param_test.shtml?cmd=ps aux">
+	Click here to see all the running processes on your machine </a>
+
+<hr>
+
+<!--#exec cmd="$cmd" -->
+
+<a href="http://localhost:4414/param_test.shtml?keyword=html&cmd=">
+	Click here to find instances of keyword in your history</a>
+
+<!--#exec cmd="history | grep $keyword" -->
+
+
+
+
+
+</body>
+
+</html>
+
