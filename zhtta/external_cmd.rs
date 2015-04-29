@@ -70,7 +70,8 @@ impl DynamicResponse {
         output.push_str(&source[temp_index .. ]);               // Push the dangling end of the string
         output
     }
-
+    
+    /// Parses all command line arguments passed in following "?"
     fn parse_args(uri_string : &str) -> Option<HashMap<String,String>> {
         let mut uri_string_split_iter = uri_string.split('?');
         let mut args = HashMap::new();
@@ -81,7 +82,7 @@ impl DynamicResponse {
                     let mut arg_pair_key_value_split_iter = arg_pair.split('=');
                     match arg_pair_key_value_split_iter.next(){
                         Some(key) => match arg_pair_key_value_split_iter.next(){
-                            Some(value) => args.insert("$".to_string() + key,String::from_str(value)),
+                            Some(value) => args.insert("$".to_string() + key,String::from_str(value).replace("%20", " ")),
                             None => None
                         },
                         None => None

@@ -181,24 +181,7 @@ impl WebServer {
                         }
                         ZhttaURL::Static(request) => {
                             debug!("===== Static Page request =====");
-                            // Create an HTTPRequest object for either cache or non-cache serving
-                            /*
-                            let (cache_tx, cache_rx) = channel();
-                            {   
-                                let server_file_cache = match server_file_cache_arc.lock() {
-                                    Ok(cache) => cache,
-                                    Err(_) => panic!("Error getting lock for cache."),
-                                };
-                                let server_file_option = server_file_cache.get(request.path_string(), request.modified());
-                                let ss = match server_file_option {
-                                    Some(cached_file) => Some(cached_file),
-                                    None => None
-                                };
-                                cache_tx.send(ss).unwrap();
-                            }
-                            */
 
-                            //let server_file_option = cache_rx.recv().unwrap();
                             let mut server_file_cache = server_file_cache_arc.lock().unwrap();
                            
                             match server_file_cache.get(request.path_string(), request.modified()) {

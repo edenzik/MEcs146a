@@ -35,7 +35,6 @@ In order to allow for more readable code, more coherent following of the Rust gu
 
 ## Description
 
-
 ### Safe Counter
 To implement a safe version of the visit counter, we use two rust constructs. The counter is wrapped in a mutex, which requires locking the mutex to retrieve the counter for incrementing and printing. This ensures that only one thread is modifying the counter at a time, preventing data races. In order to guarantee memory safety as this object is being accessed by various threads, we used an Arc pointer and passed copies of that pointer into each handler thread. The Arc pointer type atomically reference counts the accesses and ensures that the reference count is always accurate so that it will not be freed while a thread is using the counter. Arc requires that it be wrapped around an object implementing sync, which mutex does.
 
@@ -95,6 +94,10 @@ By enabling dynamic interactions that are scoped through the HTML we sent throug
 The way this works is by parsing the URL and detecting whether the question mark character is present by the parser. If the character is found in the URL, it is split on it and an iteration occurs on all arguments. Then we match up the argument name with any appearance of a `$` in the dynamic comments.
 
 Once all the substitutions are made, it is passed on to gash just as before.
+
+Our implementation is relatively safe from injection, because even though it supports spaces - gash does not allow for `&&`.
+
+Please look at the www directory for examples of this in param_test.html
 
 ### Miscelenous improvements
 

@@ -44,7 +44,7 @@ impl ZhttaURL{
                     None => "",
                 };
 
-                 if path_str.as_slice().eq("./"){
+                if path_str.as_slice().eq("./"){
                     return ZhttaURL::Counter;
                 }
                 if !path_obj.exists() || path_obj.is_dir(){
