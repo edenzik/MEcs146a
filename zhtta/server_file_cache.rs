@@ -28,6 +28,7 @@ pub struct CachedFile {
     modified: u64
 }
 
+/// The cached file struct
 impl CachedFile {
     fn new(content: Vec<u8>, modified: u64) -> CachedFile {
         CachedFile{
@@ -35,10 +36,13 @@ impl CachedFile {
             modified: modified
         }
     }
+    
+    /// Gets the size of the file
     pub fn size(&self) -> usize{
         self.content.len()
     }
 
+    /// Gets the content of the file
     pub fn content(&self) -> &Vec<u8> {
         &self.content
     }
@@ -95,6 +99,7 @@ impl ServerFileCache {
         }
     }
 
+    /// Inserts a new element to the cache
     pub fn insert(&mut self, path_string : String, modified: u64, content: Vec<u8>){
         let cached_file = CachedFile::new(content, modified);
         if cached_file.size() > self.capacity(){

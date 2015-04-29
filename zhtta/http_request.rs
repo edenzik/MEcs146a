@@ -40,19 +40,23 @@ impl HTTPRequest {
         HTTPRequest { peer_name: peer_name, path: path, path_string: path_string, 
             size: stats.size, modified: stats.modified }
     }
-
+    
+    /// Returns the path string to the request
     pub fn path_string(&self) -> String{
         self.path_string.clone()
     }
 
+    /// Size of the file served
     pub fn size(&self) -> u64{
         self.size
     }
 
+    /// Path served
     pub fn path(&self) -> &Path{
         &self.path
     }
 
+    /// Last modified date
     pub fn modified(&self) -> u64{
         self.modified
     }
@@ -75,6 +79,7 @@ impl PartialEq for HTTPRequest {
     }
 }
 
+/// Needed by Rust
 impl Eq for HTTPRequest {}
 
 /// Makes HTTPRequests sortable by size of requested file

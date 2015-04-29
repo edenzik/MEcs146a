@@ -1,7 +1,6 @@
 PROGRAM_NAME = zhtta
 SHELL_NAME = gash
 ROOT = www
-OS = $(UNAME)
 UNIT = m
 PORT = 4414
 CONNS = 25

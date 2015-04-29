@@ -26,6 +26,10 @@ pub enum ZhttaURL {
     Bad
 }
 
+/// Implements the Zhtta URL class, which parses the incoming URL just as before. This
+/// implementation allows for pattern matching based on the request type, and later on split the
+/// url by the existence of the ? symbol for parameter passing, error pages, static pages, etc. We
+/// then implement pattern matching to determine what page to serve.
 impl ZhttaURL{
     pub fn new(request_str : String, peer_name: String) -> ZhttaURL {
         let mut request_str_split_iter = request_str.splitn(3, ' ');
